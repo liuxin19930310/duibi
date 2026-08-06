@@ -1,0 +1,225 @@
+/* ===== 协议面板公共样式（所有模块共用） ===== */
+
+.proto-panel {
+  background: var(--bg2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+
+.proto-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: 0.2s;
+  user-select: none;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.proto-header:hover {
+  background: var(--bg3);
+}
+
+.proto-header.no-click {
+  cursor: default;
+}
+.proto-header.no-click:hover {
+  background: transparent;
+}
+
+.proto-header.no-hover {
+  cursor: default;
+}
+.proto-header.no-hover:hover,
+.proto-header.simple-mode:hover {
+  background: transparent;
+}
+
+.proto-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.proto-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.proto-arrow {
+  transition: transform 0.3s;
+  color: var(--t3);
+  font-size: 14px;
+}
+
+.proto-arrow.collapsed {
+  transform: rotate(-90deg);
+}
+
+.proto-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+}
+
+.proto-desc {
+  font-size: 12px;
+  color: var(--t3);
+  margin-left: 4px;
+}
+
+/* 计数标签 */
+.proto-badges {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg3);
+  color: var(--t2);
+  border: 1px solid var(--border);
+}
+
+.badge.green {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.badge.total-badge {
+  background: var(--blue-l);
+  color: var(--blue);
+  border-color: var(--blue);
+  font-weight: 600;
+}
+
+/* 标题旁轻量总计数：蓝点 + 数字（无边框无底色，比徽章更克制） */
+.total-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.badge.red {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.badge.new {
+  background: var(--orange-bg);
+  color: var(--orange);
+  border-color: var(--orange);
+}
+
+.badge.del {
+  background: var(--bg4);
+  color: var(--t4);
+  border-color: var(--t4);
+}
+
+/* 筛选 Tabs */
+.proto-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.filter-tabs {
+  display: inline-flex;
+  gap: 0;
+  background: var(--bg3);
+  border-radius: 4px;
+  padding: 1px;
+  border: 1px solid var(--border);
+}
+
+.filter-tabs span {
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  color: var(--t3);
+  transition: 0.2s;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.filter-tabs span:hover {
+  color: var(--t1);
+}
+
+.filter-tabs span.active {
+  background: var(--bg2);
+  color: var(--blue);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.proto-search {
+  width: 180px;
+}
+
+.proto-search :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--border) inset !important;
+  background: var(--bg3) !important;
+}
+
+.proto-body {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+}
+
+/* 整张表格字体缩小（包括表头和单元格） */
+.proto-body :deep(.el-table) {
+  font-size: 12px;
+}
+.proto-body :deep(.el-table th.el-table__cell) {
+  font-size: 12px;
+}
+.proto-body :deep(.el-table td.el-table__cell) {
+  font-size: 11px;
+  white-space: pre-line;
+}
+/* 让 diff 单元格字体也统一 */
+.proto-body :deep(.diff-new),
+.proto-body :deep(.diff-old) {
+  font-size: 11px;
+}
+
+/* Diff 高亮 */
+.diff-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  font-size: 12px;
+  align-items: flex-start; /* 左对齐（与导出一致） */
+  justify-content: center; /* 垂直居中 */
+  text-align: left;
+}
+
+.diff-new {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.diff-old {
+  color: var(--t3);
+}

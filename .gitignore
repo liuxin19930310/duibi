@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+preview/
+
+# Local backups (not source)
+backup/
+
+# Logs
+*.log
+server.log
+devserver.log
+
+# Local project memory (machine-specific)
+.workbuddy/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local server secrets — may contain API keys, do not commit
+server/llm-config.json
+
+# Environment / secret files
+.env
+.env.*
+.env.local

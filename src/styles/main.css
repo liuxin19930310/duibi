@@ -1,0 +1,237 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+
+/* ===== 深色主题（默认） ===== */
+:root {
+  --bg: #0f1117;
+  --bg2: #161822;
+  --bg3: #1c1f2e;
+  --bg4: #252839;
+  --card: #1a1d2e;
+  --border: #2a2d3e;
+  --table-border: #353a4f;
+  --div: #252839;
+  --sidebar: #12141f;
+  --sidebar-h: rgba(74, 158, 255, 0.1);
+  --sidebar-a: rgba(74, 158, 255, 0.18);
+  --t1: #e8eaed;
+  --t2: #b0b4c0;
+  --t3: #7a7f95;
+  --t4: #4a4f65;
+  --blue: #4a9eff;
+  --blue-l: rgba(74, 158, 255, 0.12);
+  --blue-b: rgba(74, 158, 255, 0.3);
+  --green: #22c55e;
+  --green-l: rgba(34, 197, 94, 0.12);
+  --green-bg: rgba(34, 197, 94, 0.1);
+  --red: #ef4444;
+  --red-l: rgba(239, 68, 68, 0.12);
+  --red-bg: rgba(239, 68, 68, 0.05);
+  --orange: #f59e0b;
+  --orange-l: rgba(245, 158, 11, 0.12);
+  --orange-bg: rgba(245, 158, 11, 0.1);
+  --purple: #a855f7;
+  --purple-l: rgba(168, 85, 247, 0.12);
+  --r: 10px;
+  --r-md: 10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ===== 浅色主题 ===== */
+html.light {
+  --bg: #f5f7fa;
+  --bg2: #ffffff;
+  --bg3: #f0f2f5;
+  --bg4: #e5e7eb;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --table-border: #e5e7eb;
+  --div: #f0f2f5;
+  --sidebar: #ffffff;
+  --sidebar-h: rgba(74, 158, 255, 0.1);
+  --sidebar-a: rgba(74, 158, 255, 0.15);
+  --t1: #1a1d2e;
+  --t2: #4a4f65;
+  --t3: #646b7a;
+  --t4: #b0b4c0;
+  --blue: #2563eb;
+  --green: #15803d;
+  --red: #dc2626;
+  --orange: #b45309;
+  --green-bg: rgba(34, 197, 94, 0.08);
+  --red-bg: rgba(239, 68, 68, 0.045);
+  --orange-bg: rgba(245, 158, 11, 0.08);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* ===== 全局重置 ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--t1);
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg4);
+  border-radius: 3px;
+}
+
+::selection {
+  background: rgba(74, 158, 255, 0.3);
+}
+
+/* ===== Element Plus 主题适配 ===== */
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: var(--bg3);
+  --el-table-border-color: var(--table-border);
+  --el-table-text-color: var(--t1);
+  --el-table-header-text-color: var(--t2);
+  font-size: 12px;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: rgba(74, 158, 255, 0.03);
+}
+
+.el-table .el-table__row:hover > td.el-table__cell {
+  background: var(--sidebar-h) !important;
+}
+
+.el-input {
+  --el-input-bg-color: var(--bg3);
+  --el-input-border-color: var(--border);
+  --el-input-text-color: var(--t1);
+  --el-input-placeholder-color: var(--t4);
+}
+
+.el-input__wrapper {
+  background: var(--bg3) !important;
+  box-shadow: 0 0 0 1px var(--border) inset !important;
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--blue-b) inset !important;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--blue) inset !important;
+}
+
+.el-tag {
+  border: none;
+  font-size: 11px;
+}
+
+.el-dialog {
+  --el-dialog-bg-color: var(--card);
+  --el-dialog-title-font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+
+.el-dialog__header {
+  border-bottom: 1px solid var(--div);
+  padding: 16px 20px;
+}
+
+.el-dialog__body {
+  padding: 20px;
+}
+
+.el-button {
+  font-family: var(--sans);
+}
+
+.el-upload-dragger {
+  background: var(--bg3) !important;
+  border-color: var(--border) !important;
+}
+
+.el-upload-dragger:hover {
+  border-color: var(--blue-b) !important;
+}
+
+/* 首页 卡片 / 进度条 / 空状态 主题适配（沿用 --el-* 覆盖机制，跟随项目主题变量） */
+html .el-card {
+  --el-card-bg-color: var(--card);
+  --el-card-border-color: var(--border);
+  border-radius: var(--r);
+  color: var(--t1);
+}
+html .el-card__header {
+  border-bottom: 1px solid var(--div);
+}
+html .el-progress {
+  --el-fill-color: var(--bg4);
+}
+html .el-progress__text {
+  color: var(--t2);
+  font-family: var(--mono);
+}
+html .el-empty {
+  --el-empty-fill-color-0: var(--t4);
+  --el-empty-fill-color-1: var(--t4);
+  --el-empty-fill-color-2: var(--t4);
+  --el-empty-fill-color-3: var(--t4);
+  --el-empty-text-color: var(--t3);
+}
+html .el-empty__description {
+  color: var(--t3);
+}
+
+/* ===== 选「变更前」/取消导入/替换日志 提示条：品牌蓝信息提示（替代原告警黄） ===== */
+html.light .file-step-msg.el-message {
+  background: #eaf3ff;
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 6px;
+  padding: 8px 14px;
+  min-width: 0;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.12);
+}
+html.light .file-step-msg.el-message .el-message__icon {
+  font-size: 14px;
+  color: #4a9eff;
+}
+html.light .file-step-msg .el-message__content {
+  color: #1f3a5f;
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* 深色主题为默认（:root），不使用 html.dark 前缀；html.light 覆盖浅色主题 */
+.file-step-msg.el-message {
+  background: rgba(74, 158, 255, 0.14);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 6px;
+  padding: 8px 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  top: 8px !important;
+}
+.file-step-msg.el-message .el-message__icon {
+  color: #6db5ff;
+}
+.file-step-msg .el-message__content {
+  color: #cfe2ff;
+  font-size: 12px;
+}
