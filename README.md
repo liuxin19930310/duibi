@@ -54,3 +54,5 @@ tests/                测试
 ```bash
 git acp "一句话说明改动"
 ```
+
+不带说明直接 `git acp` 时，会按改动自动推断提交类型与范围，生成规范化 message（如 `docs(README.md): update 1 file(s) via acp`）。
