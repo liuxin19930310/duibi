@@ -46,3 +46,11 @@ tests/                测试
 
 - `node_modules/`、`dist/`、`preview/`、`backup/`、日志文件、`.env`、服务端密钥均经 `.gitignore` 忽略，不入库
 - 提交身份使用 GitHub 隐私邮箱
+
+## 快捷提交
+
+已配置本仓库别名 `acp`（add + commit + push 合一），日常提交只需一条命令：
+
+```bash
+git acp "一句话说明改动"
+```
