@@ -10,7 +10,7 @@ function showMessage(kind, message) {
 }
 
 // 纯解析函数统一收敛在 deviceParser.js，这里只做界面/对比状态层
-import { parseInterfaceInfoLog, parseInterfaceBrief, parseConfigForIpAddress, parseConfigForIsisCost, parseConfigForDescription, parseConfigForEthTrunkMembers, parseConfigForVrf } from './deviceParser.js'
+import { parseInterfaceInfoLog, parseInterfaceBrief, parseConfigForIpAddress, parseConfigForIsisCost, isisCostDisplay, parseConfigForDescription, parseConfigForEthTrunkMembers, parseConfigForVrf } from './deviceParser.js'
 
 export function useInterfaceModule() {
   const neighborList = ref([])
@@ -47,19 +47,23 @@ export function useInterfaceModule() {
   // ★ 表格列定义：这里已移除了 ipv6Mtu 列
   const detailFields = [
     { key: 'vrf', label: 'VRF', minWidth: 40 },
-    { key: 'isisCost', label: 'ISIS Cost', minWidth: 70 },
+    { key: 'isisCost', label: 'COST值', minWidth: 120 },
     { key: 'ipv4', label: '接口IP', minWidth: 120 },
     { key: 'ipv6', label: '接口IPv6', minWidth: 190 },
-    { key: 'opticalPower', label: '光功率', minWidth: 300 },
-    { key: 'bandwidthUtil', label: '入/出带宽利用率', minWidth: 100 },
-    { key: 'mtuL1L2', label: 'LAN/WAN', minWidth: 70 },
+    { key: 'rxWarningRange', label: '收光范围', minWidth: 130 },
+    { key: 'txWarningRange', label: '发光范围', minWidth: 130 },
+    { key: 'rxPower', label: '收光值', minWidth: 150 },
+    { key: 'txPower', label: '发光值', minWidth: 150 },
+    { key: 'inUti', label: '入向流量', minWidth: 90 },
+    { key: 'outUti', label: '出向流量', minWidth: 90 },
+    { key: 'mtuL1L2', label: '传输模式', minWidth: 70 },
     { key: 'interfaceRate', label: '接口速率', minWidth: 70 },
     { key: 'moduleType', label: '模块类型', minWidth: 90 },
-    { key: 'moduleDistance', label: '模块距离', minWidth: 60 },
+    { key: 'moduleDistance', label: '传输距离', minWidth: 60 },
     { key: 'mtu', label: 'MTU', minWidth: 50 },
-    { key: 'packetLossRate', label: '丢包率', minWidth: 50 },
-    { key: 'crc', label: 'CRC', minWidth: 50 },
-    { key: 'portStatus', label: '端口状态', minWidth: 80 }
+    { key: 'crc', label: 'CRC统计', minWidth: 50 },
+    { key: 'portStatus', label: '物理状态', minWidth: 80 },
+    { key: 'protoStatus', label: '协议状态', minWidth: 80 }
   ]
 
   const readFileContent = (file) => {
@@ -82,7 +86,7 @@ export function useInterfaceModule() {
 
   // ★ 对比字段中也移除了 ipv6Mtu，只保留关键的 mtu
   const updateInterfaceTableWithDiff = (beforeStatus, afterStatus, beforeCostMap, afterCostMap, beforeIpMap, afterIpMap) => {
-    const compareFields = ['vrf', 'isisCost', 'ipv4', 'ipv6', 'opticalPower', 'bandwidthUtil', 'mtuL1L2', 'interfaceRate', 'moduleType', 'moduleDistance', 'mtu', 'srv6Sid', 'packetLossRate', 'crc', 'portStatus', 'ethTrunk']
+    const compareFields = ['vrf', 'isisCost', 'ipv4', 'ipv6', 'rxWarningRange', 'txWarningRange', 'rxPower', 'txPower', 'inUti', 'outUti', 'mtuL1L2', 'interfaceRate', 'moduleType', 'moduleDistance', 'mtu', 'srv6Sid', 'packetLossRate', 'crc', 'portStatus', 'protoStatus', 'ethTrunk']
     neighborList.value.forEach(row => {
       const key = row._key || row.interfaceName
       const bStatus = beforeStatus[key] || {}
@@ -91,7 +95,7 @@ export function useInterfaceModule() {
       compareFields.forEach(f => {
         let bVal = bStatus[f] ?? ''
         let aVal = aStatus[f] ?? ''
-        if (f === 'isisCost') { bVal = beforeCostMap[key] || bVal; aVal = afterCostMap[key] || aVal }
+        if (f === 'isisCost') { const bC = isisCostDisplay(beforeCostMap[key]); if (bC !== '-') bVal = bC; const aC = isisCostDisplay(afterCostMap[key]); if (aC !== '-') aVal = aC }
         if (f === 'ipv4' || f === 'ipv6') { bVal = (beforeIpMap[key] && beforeIpMap[key][f]) || bVal; aVal = (afterIpMap[key] && afterIpMap[key][f]) || aVal }
         if (String(bVal) !== String(aVal)) {
           const diffObj = { field: f, beforeVal: String(bVal)||'-', afterVal: String(aVal)||'-' }
@@ -137,28 +141,28 @@ export function useInterfaceModule() {
       neighborList.value = mergeInterfaceToTable(afterStatus)
       statusCount = Object.keys(afterStatus).length
       neighborList.value.forEach(row => {
-        if (afterCostMap[row.interfaceName]) row.isisCost = afterCostMap[row.interfaceName]
+        const aCostDisp = isisCostDisplay(afterCostMap[row.interfaceName]); if (aCostDisp !== '-') row.isisCost = aCostDisp
         if (afterIpMap[row.interfaceName]) {
           row.ipv4 = afterIpMap[row.interfaceName].ipv4 || '-'
           row.ipv6 = afterIpMap[row.interfaceName].ipv6 || '-'
         }
         // 利用率匹配：精确优先，回落到去速率后缀的归一化匹配（兼容 brief 输出带 (10G) 的情况）
         const afterBKey = afterBriefMap[row.interfaceName] ? row.interfaceName : (afterBriefMap[normIf(row.interfaceName)] ? normIf(row.interfaceName) : null)
-        if (afterBKey) row.bandwidthUtil = afterBriefMap[afterBKey]
+        if (afterBKey) { const av = afterBriefMap[afterBKey]; if (av) { row.inUti = av.inUti || '-'; row.outUti = av.outUti || '-' } }
         if (afterVrfMap[row.interfaceName]) row.vrf = afterVrfMap[row.interfaceName]
       })
     } else if (beforeText) {
       neighborList.value = mergeInterfaceToTable(beforeStatus)
       statusCount = Object.keys(beforeStatus).length
       neighborList.value.forEach(row => {
-        if (beforeCostMap[row.interfaceName]) row.isisCost = beforeCostMap[row.interfaceName]
+        const bCostDisp = isisCostDisplay(beforeCostMap[row.interfaceName]); if (bCostDisp !== '-') row.isisCost = bCostDisp
         if (beforeIpMap[row.interfaceName]) {
           row.ipv4 = beforeIpMap[row.interfaceName].ipv4 || '-'
           row.ipv6 = beforeIpMap[row.interfaceName].ipv6 || '-'
         }
         // 利用率匹配：精确优先，回落到去速率后缀的归一化匹配（兼容 brief 输出带 (10G) 的情况）
         const beforeBKey = beforeBriefMap[row.interfaceName] ? row.interfaceName : (beforeBriefMap[normIf(row.interfaceName)] ? normIf(row.interfaceName) : null)
-        if (beforeBKey) row.bandwidthUtil = beforeBriefMap[beforeBKey]
+        if (beforeBKey) { const bv = beforeBriefMap[beforeBKey]; if (bv) { row.inUti = bv.inUti || '-'; row.outUti = bv.outUti || '-' } }
         if (beforeVrfMap[row.interfaceName]) row.vrf = beforeVrfMap[row.interfaceName]
       })
     }
@@ -212,7 +216,7 @@ export function useInterfaceModule() {
     beforeTextVal, afterTextVal, getDiffDisplay, getDiffInfo, statusTagType, detailFields,
     updateNeighbors, autoParseAndUpdate, handleFileChange, parseInterfaceInfoLog, mergeInterfaceToTable,
     getCostByInterface, getIpByInterface,
-    parseConfigForIsisCost, parseConfigForIpAddress,
+    parseConfigForIsisCost, isisCostDisplay, parseConfigForIpAddress,
     parseConfigForDescription, parseConfigForEthTrunkMembers,
     parseConfigForVrf,
     parseInterfaceBrief

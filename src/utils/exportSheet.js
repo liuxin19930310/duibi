@@ -28,13 +28,35 @@ export function screenCellVal(row, key, { getDiffInfo, keyField }) {
   return formatVal(row[key])
 }
 
+// 导出样式（参考用户提供的 222.xlsx 参考样式：表头微软雅黑11加粗白字+深蓝4472C4底+细灰边框居中；数据微软雅黑10黑字+细灰边框）
 const titleFill = { rgb: 'F2F2F2' }
-const titleFont = { bold: true, color: { rgb: '1F3864' } }
-const headerFill = { rgb: 'DCE6F1' }
-const headerFont = { bold: true, color: { rgb: '1F3864' } }
-const baseFont = { color: { rgb: '1F3864' } }
+const titleFont = { name: 'Microsoft YaHei', sz: 12, bold: true, color: { rgb: '1F4E79' } }
+const headerFill = { rgb: '4472C4' }
+const headerFont = { name: 'Microsoft YaHei', sz: 11, bold: true, color: { rgb: 'FFFFFF' } }
+const baseFont = { name: 'Microsoft YaHei', sz: 10, color: { rgb: '000000' } }
 const delFill = { rgb: 'FCEBEB' }
 const okFill = { rgb: 'EAF3DE' }
+const cellBorder = {
+  top: { style: 'thin', color: { rgb: '808080' } },
+  bottom: { style: 'thin', color: { rgb: '808080' } },
+  left: { style: 'thin', color: { rgb: '808080' } },
+  right: { style: 'thin', color: { rgb: '808080' } }
+}
+const upColor = { rgb: '00AA00' }
+const downColor = { rgb: 'FF0000' }
+// 状态值判定（参考样式：up 绿 / down 红；兼容聚合口"up,up"逗号串）
+const isUpVal = (v) => {
+  const s = String(v ?? '').trim().toLowerCase()
+  if (!s || s === '-') return false
+  if (s.includes(',')) return s.split(',').every(x => ['up', 'up(s)', 'operational', 'established'].includes(x.trim()))
+  return ['up', 'up(s)', 'operational', 'established'].includes(s)
+}
+const isDownVal = (v) => {
+  const s = String(v ?? '').trim().toLowerCase()
+  if (!s || s === '-') return false
+  if (s.includes(',')) return s.split(',').some(x => ['down', '*down', '^down', 'idle'].includes(x.trim()))
+  return ['down', '*down', '^down', 'idle'].includes(s)
+}
 
 // 单个模块 → 追加「标题行 + 表头行 + 数据行」到 aoa/meta
 // withConsistent=true 时多一列「对比结果」（配置对比用，含红/绿底标注）；false 时用于配置解析（单设备、无对比）
@@ -68,32 +90,43 @@ function pushModuleRows(aoa, meta, m, { withConsistent }) {
 function applySheetStyles(ws, aoa, meta, XLSX) {
   const maxCols = Math.max(...aoa.map(r => r.length))
   const merges = []
+  const rows = []
   for (let r = 0; r < aoa.length; r++) {
     const rowMeta = meta[r]
     if (rowMeta.type === 'title') {
       const cell = ws[XLSX.utils.encode_cell({ r, c: 0 })]
       if (cell) cell.s = { fill: { patternType: 'solid', fgColor: titleFill }, font: titleFont, alignment: { horizontal: 'left', vertical: 'center' } }
       merges.push({ s: { r, c: 0 }, e: { r, c: Math.max(maxCols - 1, 0) } })
+      rows.push({ hpt: 20 })
     } else if (rowMeta.type === 'header') {
       for (let c = 0; c < aoa[r].length; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })]
-        if (cell) cell.s = { fill: { patternType: 'solid', fgColor: headerFill }, font: headerFont, alignment: { horizontal: 'left', vertical: 'center' } }
+        if (cell) cell.s = { fill: { patternType: 'solid', fgColor: headerFill }, font: headerFont, alignment: { horizontal: 'center', vertical: 'center' }, border: cellBorder }
       }
+      rows.push({ hpt: 16.5 })
     } else if (rowMeta.type === 'data') {
       // 配置解析（单设备）无对比，consistent 为 undefined → 不加红/绿底
       const fill = rowMeta.consistent === false ? delFill : rowMeta.consistent === true ? okFill : null
       for (let c = 0; c < aoa[r].length; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })]
         if (!cell) continue
-        const style = { font: { ...baseFont }, alignment: { horizontal: 'left', vertical: 'center' } }
+        const font = { ...baseFont }
+        // 状态类值着色（up 绿 / down 红，参考样式）
+        if (isUpVal(cell.v)) font.color = upColor
+        else if (isDownVal(cell.v)) font.color = downColor
+        const style = { font, alignment: { horizontal: 'left', vertical: 'center' }, border: cellBorder }
         if (fill) style.fill = { patternType: 'solid', fgColor: fill }
         if (typeof cell.v === 'string' && cell.v.includes('\n')) style.alignment = { horizontal: 'left', vertical: 'center', wrapText: true }
         cell.s = style
       }
+      rows.push({ hpt: 14.5 })
     }
   }
   if (merges.length) ws['!merges'] = merges
-  ws['!cols'] = Array.from({ length: maxCols }, (_, i) => ({ wch: i === 0 ? 22 : 18 }))
+  if (rows.length) ws['!rows'] = rows
+  // 列宽：设备名/描述列按内容加宽，其余自适应默认
+  const headerLabels = aoa[1] || []
+  ws['!cols'] = headerLabels.map(label => ({ wch: label === '描述' ? 60 : label === '设备名' ? 32 : 18 }))
 }
 
 // 配置对比：多模块合并到同一张表（含「对比结果」列与红/绿底）

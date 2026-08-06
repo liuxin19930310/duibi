@@ -7,6 +7,7 @@ export const PAGE_PATHS = {
   'h3c-p': '/compare/h3c-p',
   'device-huawei': '/device/huawei',
   'device-huawei-ar': '/device/huawei-ar',
+  'device-huawei-trunk': '/device/huawei-trunk',
   'device-h3c': '/device/h3c',
   'device-global': '/device/global',
   'text-diff': '/text-diff',

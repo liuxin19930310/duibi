@@ -80,6 +80,9 @@
               </template>
               <template v-else>
                 <el-tag v-if="stateField === col.key" :type="tagType(row[stateField])" size="small">{{ row[stateField] || '待采集' }}</el-tag>
+                <el-tag v-else-if="col.key === 'protoStatus'" :type="tagType(row.protoStatus)" size="small">{{ row.protoStatus || '-' }}</el-tag>
+                <el-tag v-else-if="col.key === 'trunkStatus'" :type="trunkStatusTagType(row.trunkStatus)" size="small">{{ row.trunkStatus || '-' }}</el-tag>
+                <el-tag v-else-if="col.key === 'rxPower' || col.key === 'txPower'" :type="powerRangeTagType(row, col.key)" size="small">{{ row[col.key] || '-' }}</el-tag>
                 <el-tag v-else-if="props.boolFields.includes(col.key)" :type="row[col.key] ? 'success' : 'info'" size="small">{{ row[col.key] ? '是' : '否' }}</el-tag>
                 <span v-else-if="col.key === 'ebgpMaxHop'">{{ row[col.key] === '' || row[col.key] == null ? 'N/A' : row[col.key] }}</span>
                 <span v-else>{{ formatVal(row[col.key]) }}</span>
@@ -310,7 +313,15 @@ const toggleModule = () => {
 // ---- Tag ----
 const tagType = (val) => {
   if (!val) return 'info'
-  const v = val.trim().split(/\s+/)[0].toLowerCase()
+  const raw = val.trim()
+  // 逗号分隔的多状态（如聚合口物理口状态 "up,up"）：全部正常→绿，任一 down→红，其余→黄
+  if (raw.includes(',')) {
+    const parts = raw.split(',').map(s => s.trim().toLowerCase())
+    if (parts.length && parts.every(s => ['up', 'up(s)', 'operational', 'established', '正常'].includes(s))) return 'success'
+    if (parts.some(s => ['down', '*down', 'administratively down'].includes(s))) return 'danger'
+    return 'warning'
+  }
+  const v = raw.split(/\s+/)[0].toLowerCase()
   // LLDP 等状态：正常=绿；变更/新增邻居=黄；已失效=红(默认)
   if (v === '正常') return 'success'
   if (v === '变更' || v === '新增邻居' || v === '新增协议') return 'warning'
@@ -331,6 +342,22 @@ const tagType = (val) => {
   if (['reach', 'reachable'].includes(v)) return 'success'
   if (['stale', 'delay', 'probe', 'incomplete', 'incmp'].includes(v)) return 'warning'
   return 'danger'
+}
+
+// 聚合口状态着色：up→绿(success)，down/*down→红(danger)，其余→灰(info)
+const trunkStatusTagType = (val) => {
+  const v = val ? val.trim().toLowerCase() : ''
+  if (v === 'up' || v === 'up(s)') return 'success'
+  if (v === 'down' || v === '*down') return 'danger'
+  return 'info'
+}
+
+// 收光值/发光值着色：全部在告警范围内→绿(success)，任一超范围→红(danger)，无数据/无范围→灰(info)
+const powerRangeTagType = (row, key) => {
+  const ok = key === 'rxPower' ? row.rxPowerOk : row.txPowerOk
+  if (ok === true) return 'success'
+  if (ok === false) return 'danger'
+  return 'info'
 }
 
 const formatVal = (val) => {
@@ -457,18 +484,39 @@ const buildStyledSheet = async () => {
     aoa.push(vals)
   })
 
-  const headerFill = { rgb: 'DCE6F1' }
-  const headerFont = { bold: true, color: { rgb: '1F3864' } }
+  const headerFill = { rgb: '4472C4' }
+  const headerFont = { name: 'Microsoft YaHei', sz: 11, bold: true, color: { rgb: 'FFFFFF' } }
   const delFill = { rgb: 'FCEBEB' }
   const okFill = { rgb: 'EAF3DE' }
+  const cellBorder = {
+    top: { style: 'thin', color: { rgb: '808080' } },
+    bottom: { style: 'thin', color: { rgb: '808080' } },
+    left: { style: 'thin', color: { rgb: '808080' } },
+    right: { style: 'thin', color: { rgb: '808080' } }
+  }
+  const baseFont = { name: 'Microsoft YaHei', sz: 10, color: { rgb: '000000' } }
+  const upColor = { rgb: '00AA00' }
+  const downColor = { rgb: 'FF0000' }
+  const isUpVal = (v) => {
+    const s = String(v ?? '').trim().toLowerCase()
+    if (!s || s === '-') return false
+    if (s.includes(',')) return s.split(',').every(x => ['up', 'up(s)', 'operational', 'established'].includes(x.trim()))
+    return ['up', 'up(s)', 'operational', 'established'].includes(s)
+  }
+  const isDownVal = (v) => {
+    const s = String(v ?? '').trim().toLowerCase()
+    if (!s || s === '-') return false
+    if (s.includes(',')) return s.split(',').some(x => ['down', '*down', '^down', 'idle'].includes(x.trim()))
+    return ['down', '*down', '^down', 'idle'].includes(s)
+  }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa)
-  // 表头：蓝底加粗
+  // 表头：深蓝底白字加粗居中（参考样式）
   for (let c = 0; c < allCols.length; c++) {
     const cell = ws[XLSX.utils.encode_cell({ r: 0, c })]
-    if (cell) cell.s = { fill: { patternType: 'solid', fgColor: headerFill }, font: headerFont, alignment: { horizontal: 'left', vertical: 'center' } }
+    if (cell) cell.s = { fill: { patternType: 'solid', fgColor: headerFill }, font: headerFont, alignment: { horizontal: 'center', vertical: 'center' }, border: cellBorder }
   }
-  // 数据行：不一致红底 / 一致绿底；含换行单元格启用自动换行
+  // 数据行：不一致红底 / 一致绿底；up 绿字 / down 红字；含换行单元格启用自动换行
   for (let r = 1; r < aoa.length; r++) {
     const row = filteredList.value[r - 1]
     let fill = null
@@ -477,7 +525,10 @@ const buildStyledSheet = async () => {
     for (let c = 0; c < allCols.length; c++) {
       const cell = ws[XLSX.utils.encode_cell({ r, c })]
       if (!cell) continue
-      const style = { font: { color: { rgb: '1F3864' } }, alignment: { horizontal: 'left', vertical: 'center' } }
+      const font = { ...baseFont }
+      if (isUpVal(cell.v)) font.color = upColor
+      else if (isDownVal(cell.v)) font.color = downColor
+      const style = { font, alignment: { horizontal: 'left', vertical: 'center' }, border: cellBorder }
       if (fill) style.fill = { patternType: 'solid', fgColor: fill }
       if (typeof cell.v === 'string' && cell.v.includes('\n')) {
         style.alignment = { horizontal: 'left', vertical: 'center', wrapText: true }
@@ -485,8 +536,10 @@ const buildStyledSheet = async () => {
       cell.s = style
     }
   }
-  // 列宽：光功率列加宽以容纳多路值
-  ws['!cols'] = allCols.map(c => ({ wch: c.key === 'opticalPower' ? 48 : 16 }))
+  // 列宽：光功率列加宽以容纳多路值，描述列加宽
+  ws['!cols'] = allCols.map(c => ({ wch: c.key === 'opticalPower' ? 48 : c.key === 'description' ? 60 : 16 }))
+  // 行高：表头 16.5、数据 14.5（参考样式）
+  ws['!rows'] = [{ hpt: 16.5 }, ...aoa.slice(1).map(() => ({ hpt: 14.5 }))]
   return { ws, name: safeSheetName(props.title) }
 }
 

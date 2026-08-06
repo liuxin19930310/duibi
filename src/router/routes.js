@@ -14,6 +14,7 @@ export const routes = [
 
   { path: '/device/huawei', name: 'device-huawei', component: () => import('../views/DevicePage.vue'), meta: { title: '华为 · 路由协议(解析)', pageKey: 'device-huawei', keepAlive: true, componentName: 'DevicePage' } },
   { path: '/device/huawei-ar', name: 'device-huawei-ar', component: () => import('../views/DevicePage.vue'), meta: { title: '华为 · 接口信息', pageKey: 'device-huawei-ar', keepAlive: true, componentName: 'DevicePage' } },
+  { path: '/device/huawei-trunk', name: 'device-huawei-trunk', component: () => import('../views/DevicePage.vue'), meta: { title: '华为 · 聚合口(解析)', pageKey: 'device-huawei-trunk', keepAlive: true, componentName: 'DevicePage' } },
   { path: '/device/h3c', name: 'device-h3c', component: () => import('../views/DevicePage.vue'), meta: { title: '华三 · 接口信息', pageKey: 'device-h3c', keepAlive: true, componentName: 'DevicePage' } },
   { path: '/device/global', name: 'device-global', component: () => import('../views/DevicePage.vue'), meta: { title: '全局配置(解析)', pageKey: 'device-global', keepAlive: true, componentName: 'DevicePage' } },
 

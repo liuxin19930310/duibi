@@ -48,7 +48,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="归属聚合接口" prop="ethTrunk" :width="colWidths.ethTrunk" align="center">
+          <el-table-column label="聚合口" prop="ethTrunk" :width="colWidths.ethTrunk" align="center">
             <template #default="{ row }">
               <div class="td-center">
                 <template v-if="getDiffInfo(row, 'ethTrunk')">
@@ -59,13 +59,24 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="端口状态" prop="portStatus" :width="colWidths.portStatus" align="center">
+          <el-table-column label="物理状态" prop="portStatus" :width="colWidths.portStatus" align="center">
             <template #default="{ row }">
               <div class="td-center">
                 <template v-if="getDiffInfo(row, 'portStatus')">
                   <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'portStatus').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'portStatus').beforeVal }}</div></div>
                 </template>
                 <span v-else :class="['tag', statusTagClass(row.portStatus)]">{{ row.portStatus || '-' }}</span>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="协议状态" prop="protoStatus" :width="colWidths.protoStatus" align="center">
+            <template #default="{ row }">
+              <div class="td-center">
+                <template v-if="getDiffInfo(row, 'protoStatus')">
+                  <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'protoStatus').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'protoStatus').beforeVal }}</div></div>
+                </template>
+                <el-tag v-else :type="protoTagType(row.protoStatus)" size="small">{{ row.protoStatus || '-' }}</el-tag>
               </div>
             </template>
           </el-table-column>
@@ -81,7 +92,7 @@
           </el-table-column>
 
           <el-table-column label="IP 地址">
-            <el-table-column label="IPv4" prop="ipv4" :min-width="colWidths.ipv4" align="center">
+            <el-table-column label="IPv4地址" prop="ipv4" :min-width="colWidths.ipv4" align="center">
               <template #default="{ row }">
                 <div class="td-center">
                   <template v-if="getDiffInfo(row, 'ipv4')">
@@ -91,7 +102,7 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="IPv6" prop="ipv6" :min-width="colWidths.ipv6" align="center">
+            <el-table-column label="IPv6地址" prop="ipv6" :min-width="colWidths.ipv6" align="center">
               <template #default="{ row }">
                 <div class="td-center">
                   <template v-if="getDiffInfo(row, 'ipv6')">
@@ -114,7 +125,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="ISIS Cost" prop="isisCost" :width="colWidths.isisCost" align="center">
+          <el-table-column label="COST值" prop="isisCost" :width="colWidths.isisCost" align="center">
             <template #default="{ row }">
               <div class="td-center">
                 <template v-if="getDiffInfo(row, 'isisCost')">
@@ -136,29 +147,63 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="光功率" prop="opticalPower" :min-width="colWidths.opticalPower" align="center">
+            <el-table-column label="收光范围" prop="rxWarningRange" :min-width="colWidths.rxWarningRange" align="center">
               <template #default="{ row }">
                 <div class="td-center">
-                  <template v-if="getDiffInfo(row, 'opticalPower')">
-                    <div v-if="getDiffInfo(row, 'opticalPower').subDiffs" class="op-inline">
-                      <span v-if="getDiffInfo(row, 'opticalPower').subDiffs[0].changed" class="op-changed">Rx:<span class="op-old">{{ getDiffInfo(row, 'opticalPower').subDiffs[0].before }}</span><span class="op-arrow">→</span><span class="op-new">{{ getDiffInfo(row, 'opticalPower').subDiffs[0].after }}</span></span>
-                      <span v-else class="op-same">Rx:{{ getDiffInfo(row, 'opticalPower').subDiffs[0].after }}</span>
-                      <span v-if="getDiffInfo(row, 'opticalPower').subDiffs[1].changed" class="op-changed">Tx:<span class="op-old">{{ getDiffInfo(row, 'opticalPower').subDiffs[1].before }}</span><span class="op-arrow">→</span><span class="op-new">{{ getDiffInfo(row, 'opticalPower').subDiffs[1].after }}</span></span>
-                      <span v-else class="op-same">Tx:{{ getDiffInfo(row, 'opticalPower').subDiffs[1].after }}</span>
-                    </div>
-                    <div v-else class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'opticalPower').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'opticalPower').beforeVal }}</div></div>
+                  <template v-if="getDiffInfo(row, 'rxWarningRange')">
+                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'rxWarningRange').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'rxWarningRange').beforeVal }}</div></div>
                   </template>
-                  <span v-else class="cell-mono">{{ row.opticalPower || '-' }}</span>
+                  <span v-else class="cell-mono">{{ row.rxWarningRange || '-' }}</span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="带宽利用率" prop="bandwidthUtil" :min-width="colWidths.bandwidthUtil" align="center">
+            <el-table-column label="发光范围" prop="txWarningRange" :min-width="colWidths.txWarningRange" align="center">
               <template #default="{ row }">
                 <div class="td-center">
-                  <template v-if="getDiffInfo(row, 'bandwidthUtil')">
-                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'bandwidthUtil').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'bandwidthUtil').beforeVal }}</div></div>
+                  <template v-if="getDiffInfo(row, 'txWarningRange')">
+                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'txWarningRange').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'txWarningRange').beforeVal }}</div></div>
                   </template>
-                  <span v-else>{{ row.bandwidthUtil || '-' }}</span>
+                  <span v-else class="cell-mono">{{ row.txWarningRange || '-' }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="收光值" prop="rxPower" :min-width="colWidths.rxPower" align="center">
+              <template #default="{ row }">
+                <div class="td-center">
+                  <template v-if="getDiffInfo(row, 'rxPower')">
+                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'rxPower').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'rxPower').beforeVal }}</div></div>
+                  </template>
+                  <el-tag v-else :type="powerRangeTagType(row.rxPower, row.rxPowerOk)" size="small">{{ row.rxPower || '-' }}</el-tag>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="发光值" prop="txPower" :min-width="colWidths.txPower" align="center">
+              <template #default="{ row }">
+                <div class="td-center">
+                  <template v-if="getDiffInfo(row, 'txPower')">
+                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'txPower').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'txPower').beforeVal }}</div></div>
+                  </template>
+                  <el-tag v-else :type="powerRangeTagType(row.txPower, row.txPowerOk)" size="small">{{ row.txPower || '-' }}</el-tag>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="入向流量" prop="inUti" :min-width="colWidths.inUti" align="center">
+              <template #default="{ row }">
+                <div class="td-center">
+                  <template v-if="getDiffInfo(row, 'inUti')">
+                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'inUti').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'inUti').beforeVal }}</div></div>
+                  </template>
+                  <span v-else>{{ row.inUti || '-' }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="出向流量" prop="outUti" :min-width="colWidths.outUti" align="center">
+              <template #default="{ row }">
+                <div class="td-center">
+                  <template v-if="getDiffInfo(row, 'outUti')">
+                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'outUti').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'outUti').beforeVal }}</div></div>
+                  </template>
+                  <span v-else>{{ row.outUti || '-' }}</span>
                 </div>
               </template>
             </el-table-column>
@@ -198,17 +243,7 @@
           </el-table-column>
 
           <el-table-column label="质量">
-            <el-table-column label="丢包率" prop="packetLossRate" :min-width="colWidths.packetLossRate" align="center">
-              <template #default="{ row }">
-                <div class="td-center">
-                  <template v-if="getDiffInfo(row, 'packetLossRate')">
-                    <div class="diff-cell"><div class="diff-new">{{ getDiffInfo(row, 'packetLossRate').afterVal }}</div><div class="diff-old">{{ getDiffInfo(row, 'packetLossRate').beforeVal }}</div></div>
-                  </template>
-                  <span v-else :class="{ 'val-warn': row.packetLossRate && row.packetLossRate !== '-' && row.packetLossRate !== '0%' }">{{ row.packetLossRate || '-' }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="CRC" prop="crc" :min-width="colWidths.crc" align="center">
+            <el-table-column label="CRC统计" prop="crc" :min-width="colWidths.crc" align="center">
               <template #default="{ row }">
                 <div class="td-center">
                   <template v-if="getDiffInfo(row, 'crc')">
@@ -250,18 +285,22 @@ const DEFAULT_WIDTHS = {
   interfaceName: 400,
   ethTrunk: 110,
   portStatus: 80,
+  protoStatus: 80,
   result: 90,
   ipv4: 140,
   ipv6: 160,
   vrf: 80,
-  isisCost: 90,
+  isisCost: 120,
   interfaceRate: 80,
-  opticalPower: 90,
-  bandwidthUtil: 100,
+  rxWarningRange: 135,
+  txWarningRange: 135,
+  rxPower: 150,
+  txPower: 150,
+  inUti: 90,
+  outUti: 90,
   mtu: 70,
   moduleType: 80,
   srv6Sid: 130,
-  packetLossRate: 80,
   crc: 70
 }
 const MIN_WIDTH = 25
@@ -313,11 +352,26 @@ function resetColumnWidths() {
 const statusTagClass = (val) => {
   if (!val) return 'tag-info'
   const v = val.trim().split(/\s+/)[0].toLowerCase()
-  if (v === 'up' || v === 'established' || v === 'operational') return 'tag-ok'
+  if (v === 'up' || v === 'up(s)' || v === 'established' || v === 'operational') return 'tag-ok'
   if (v === 'down' || v === '*down' || v === 'idle') return 'tag-warn'
   if (v.includes('新增')) return 'tag-new'
   if (v.includes('已失效') || v.includes('已删除')) return 'tag-del'
   return 'tag-info'
+}
+
+const protoTagType = (val) => {
+  if (!val) return 'info'
+  const v = val.trim().split(/\s+/)[0].toLowerCase()
+  if (v === 'up' || v === 'up(s)') return 'success'
+  if (v === 'down') return 'danger'
+  return 'info'
+}
+
+// 收光值/发光值着色：全部在告警范围内→绿(success)，任一超范围→红(danger)，无数据/无范围→灰(info)
+const powerRangeTagType = (val, ok) => {
+  if (ok === true) return 'success'
+  if (ok === false) return 'danger'
+  return 'info'
 }
 
 const totalConsistent = computed(() => neighborList.value.filter(i => i.isConsistent === true).length)
@@ -379,21 +433,25 @@ const safeSheetName = (name) => {
 const ifExportCols = [
   { key: 'deviceName', label: '设备名' },
   { key: 'interfaceName', label: '接口' },
-  { key: 'ethTrunk', label: '归属聚合接口' },
-  { key: 'portStatus', label: '端口状态' },
+  { key: 'ethTrunk', label: '聚合口' },
+  { key: 'portStatus', label: '物理状态' },
+  { key: 'protoStatus', label: '协议状态' },
   { key: 'result', label: '结果' },
-  { key: 'ipv4', label: 'IPv4' },
-  { key: 'ipv6', label: 'IPv6' },
+  { key: 'ipv4', label: 'IPv4地址' },
+  { key: 'ipv6', label: 'IPv6地址' },
   { key: 'vrf', label: 'VRF' },
-  { key: 'isisCost', label: 'ISIS Cost' },
+  { key: 'isisCost', label: 'COST值' },
   { key: 'interfaceRate', label: '速率' },
-  { key: 'opticalPower', label: '光功率' },
-  { key: 'bandwidthUtil', label: '带宽利用率' },
+  { key: 'rxWarningRange', label: '收光范围' },
+  { key: 'txWarningRange', label: '发光范围' },
+  { key: 'rxPower', label: '收光值' },
+  { key: 'txPower', label: '发光值' },
+  { key: 'inUti', label: '入向流量' },
+  { key: 'outUti', label: '出向流量' },
   { key: 'mtu', label: 'MTU' },
   { key: 'moduleType', label: '模块' },
   { key: 'srv6Sid', label: 'SRv6 SID' },
-  { key: 'packetLossRate', label: '丢包率' },
-  { key: 'crc', label: 'CRC' }
+  { key: 'crc', label: 'CRC统计' }
 ]
 
 const ifCellVal = (row, key) => {
@@ -447,7 +505,7 @@ const buildExportSheet = async () => {
       cell.s = style
     }
   }
-  ws['!cols'] = ifExportCols.map(c => ({ wch: c.key === 'opticalPower' ? 48 : c.key === 'interfaceName' ? 40 : 16 }))
+  ws['!cols'] = ifExportCols.map(c => ({ wch: (c.key === 'rxPower' || c.key === 'txPower') ? 40 : (c.key === 'rxWarningRange' || c.key === 'txWarningRange') ? 26 : c.key === 'interfaceName' ? 40 : 16 }))
   return { name: safeSheetName('接口信息'), ws }
 }
 

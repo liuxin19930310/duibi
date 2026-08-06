@@ -211,6 +211,16 @@
           moduleName="interface" v-model:activeModule="localActive" :filterFocus="filterFocusModule" :deviceMode="true" :export-name="importedFileName" @focusFilter="onFocus"
         />
         <ProtoPanel
+          ref="trunkRef"
+          title="聚合口" desc="Eth-Trunk 聚合口信息"
+          :list="trunkList" :getDiffInfo="noDiff"
+          keyField="interfaceName" keyLabel="聚合口" :keyWidth="160"
+          stateField="portStatus" :resultWidth="120"
+          :columns="trunkColumns"
+          :lead-columns="deviceNameCol"
+          moduleName="trunk" v-model:activeModule="localActive" :filterFocus="filterFocusModule" :deviceMode="true" :export-name="importedFileName" @focusFilter="onFocus"
+        />
+        <ProtoPanel
           ref="routingRef"
           title="IPV4路由表" desc="IPV4路由表解析"
           :list="routingList" :getDiffInfo="noDiff"
@@ -219,6 +229,28 @@
           stateField="proto" :resultWidth="100"
           :columns="routingCols"
           v-model:activeModule="localActive" :filterFocus="filterFocusModule" :export-name="importedFileName" @focusFilter="onFocus"
+        />
+      </DevicePanel>
+    </template>
+
+    <!-- 华为 · 聚合口(解析) -->
+    <template v-else-if="page === 'device-huawei-trunk'">
+      <DevicePanel
+        title="点击上传或拖拽配置文件到此处"
+        :info="deviceInfoHW"
+        :importing="deviceImporting"
+        @upload="onDeviceImport('huawei', 'trunk')"
+        @drop="onDeviceDrop($event, 'huawei', 'trunk')"
+      >
+        <ProtoPanel
+          ref="trunkRef"
+          title="聚合口(解析)" desc="Eth-Trunk 聚合口信息"
+          :list="trunkList" :getDiffInfo="noDiff"
+          keyField="interfaceName" keyLabel="聚合口" :keyWidth="160"
+          stateField="portStatus" :resultWidth="120"
+          :columns="trunkColumns"
+          :lead-columns="deviceNameCol"
+          moduleName="trunk" v-model:activeModule="localActive" :filterFocus="filterFocusModule" :deviceMode="true" :export-name="importedFileName" @focusFilter="onFocus"
         />
       </DevicePanel>
     </template>
@@ -275,6 +307,7 @@
           <el-select v-model="collectTarget" style="flex:1" :disabled="collecting" @change="onTargetChange">
             <el-option label="华为 · 路由协议(解析)" value="huawei" />
             <el-option label="华为 · 接口信息" value="huawei-ar" />
+            <el-option label="华为 · 聚合口(解析)" value="huawei-trunk" />
             <el-option label="华三 · 接口信息" value="h3c" />
           </el-select>
         </div>
@@ -314,7 +347,7 @@ import { buildParseWorkbook } from '../utils/exportSheet.js'
 import InterfaceInfoModule from '../components/InterfaceInfoModule.vue'
 import { runDeviceParseInWorker } from '../utils/parseWorker.js'
 import { resolveCollectIn, templatesForVendorIn } from '../utils/collectTemplates.js'
-import { collectScope } from '../utils/scope.js'
+import { collectScope, trunkScope } from '../utils/scope.js'
 import { settings } from '../utils/settings.js'
 import { collectDevice, llmStatus } from '../utils/api.js'
 import DevicePanel from '../components/DevicePanel.vue'
@@ -340,6 +373,8 @@ const { neighborList: ipv6neighList, getDiffInfo: ipv6neighGetDiff, updateNeighb
 const { neighborList: srv6TePolicyList, getDiffInfo: srv6TePolicyGetDiff, updateNeighbors: updateSrv6TePolicy } = srv6TePolicyMod
 const { neighborList: lldpList, getDiffInfo: lldpGetDiff, updateNeighbors: updateLldp } = lldpMod
 const { neighborList: routingList, getDiffInfo: routingGetDiff, updateNeighbors: updateRouting } = routingStatMod
+// 聚合口(解析)：共享数据（trunkScope 全局单例，跨三个解析页共享一份配置的解析结果）
+const trunkList = trunkScope.list
 
 const deviceImporting = ref(false)
 const lastVendor = ref('')
@@ -389,9 +424,11 @@ const onFocus = (name) => {
 
 const setDeviceInfo = (result, vendor, subtype) => {
   if (props.page === 'device-global') { deviceInfoGlobal.value = result; return }
-  if (vendor === 'huawei' && !subtype) deviceInfoHW.value = result
-  else if (vendor === 'huawei' && subtype === 'ar') deviceInfoAR.value = result
-  else deviceInfoH3C.value = result
+  // 全量设置：一份配置的 deviceInfo 同时喂给 华为协议/华为AR/华三/聚合口 四个面板的 info
+  // （DevicePanel 的 slot 仅在 info 有值时渲染，漏设会导致对应解析页只显示上传区、表格不渲染）
+  deviceInfoHW.value = result
+  deviceInfoAR.value = result
+  deviceInfoH3C.value = result
 }
 
 // 共享：把采集/上传得到的原始文本解析并分发到对应面板（上传、拖拽、SSH 采集三处复用）
@@ -405,7 +442,9 @@ const applyDeviceText = async (text, vendor, subtype) => {
     emit('update:activeModule', 'global')
     return
   }
-  if (vendor === 'huawei' && !subtype) {
+  // 全量写入：一份配置同时解析出 协议 + 接口 + 聚合口 + 路由，
+  // 三个解析页（路由协议/接口信息/聚合口）共享同一份数据，切页即见结果
+  if (vendor === 'huawei') {
     updateBgp(result.bgp)
     updateOspf(result.ospf)
     updateIsis(result.isis)
@@ -418,12 +457,14 @@ const applyDeviceText = async (text, vendor, subtype) => {
     updateSrv6TePolicy(result.srv6TePolicy)
     bgpStat.value = result.bgpStat
     ospfStat.value = result.ospfStat
-    emit('update:activeModule', 'bgp')
-  } else {
-    updateNeighbors(result.interfaces)
-    updateRouting(result.routing)
-    emit('update:activeModule', 'interface')
   }
+  updateNeighbors(result.interfaces)
+  updateRouting(result.routing)
+  trunkList.value = result.ethTrunks || []
+  // 激活当前页面对应模块
+  if (subtype === 'trunk') emit('update:activeModule', 'trunk')
+  else if (vendor === 'huawei' && !subtype) emit('update:activeModule', 'bgp')
+  else emit('update:activeModule', 'interface')
 }
 const onDeviceImport = (vendor, subtype) => {
   const input = document.createElement('input')
@@ -489,10 +530,10 @@ const collectTarget = ref('huawei')
 const onTargetChange = () => {
   const t = collectTarget.value
   collectVendor.value = t.startsWith('huawei') ? 'huawei' : 'h3c'
-  collectSubtype.value = t === 'huawei-ar' ? 'ar' : undefined
+  collectSubtype.value = t === 'huawei-ar' ? 'ar' : (t === 'huawei-trunk' ? 'trunk' : undefined)
   const match = settings.deviceConnections.find(d => d.vendor === collectVendor.value)
   collectDevId.value = (match || settings.deviceConnections[0])?.id || ''
-  const targetPage = collectVendor.value === 'h3c' ? 'device-h3c' : (collectSubtype.value === 'ar' ? 'device-huawei-ar' : 'device-huawei')
+  const targetPage = collectVendor.value === 'h3c' ? 'device-h3c' : (collectSubtype.value === 'ar' ? 'device-huawei-ar' : (collectSubtype.value === 'trunk' ? 'device-huawei-trunk' : 'device-huawei'))
   emit('goto', targetPage)
 }
 
@@ -534,42 +575,60 @@ const doDeviceCollect = async () => {
 }
 
 const hwColumns = [
-  { key: 'ethTrunk', label: '归属聚合接口', minWidth: 110 },
-  { key: 'portStatus', label: '端口状态', minWidth: 73 },
+  { key: 'ethTrunk', label: '聚合口', minWidth: 110 },
+  { key: 'portStatus', label: '物理状态', minWidth: 73 },
+  { key: 'protoStatus', label: '协议状态', minWidth: 80 },
   { key: 'vrf', label: 'VRF', minWidth: 65 },
-  { key: 'isisCost', label: 'ISIS Cost', minWidth: 80 },
-  { key: 'ipv4', label: 'IPv4', minWidth: 115 },
-  { key: 'ipv6', label: 'IPv6', minWidth: 190 },
-  { key: 'opticalPower', label: '光功率', minWidth: 172 },
-  { key: 'bandwidthUtil', label: '入/出利用率', minWidth: 90 },
-  { key: 'mtuL1L2', label: 'LAN/WAN', minWidth: 82 },
+  { key: 'isisCost', label: 'COST值', minWidth: 120 },
+  { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
+  { key: 'ipv6', label: 'IPv6地址', minWidth: 190 },
+  { key: 'rxWarningRange', label: '收光范围', minWidth: 115 },
+  { key: 'txWarningRange', label: '发光范围', minWidth: 115 },
+  { key: 'rxPower', label: '收光值', minWidth: 150 },
+  { key: 'txPower', label: '发光值', minWidth: 150 },
+  { key: 'inUti', label: '入向流量', minWidth: 90 },
+  { key: 'outUti', label: '出向流量', minWidth: 90 },
+  { key: 'mtuL1L2', label: '传输模式', minWidth: 82 },
   { key: 'interfaceRate', label: '速率', minWidth: 70 },
   { key: 'moduleType', label: '模块类型', minWidth: 90 },
-  { key: 'moduleDistance', label: '模块距离', minWidth: 73 },
+  { key: 'moduleDistance', label: '传输距离', minWidth: 73 },
   { key: 'mtu', label: 'MTU', minWidth: 55 },
-  { key: 'packetLossRate', label: '丢包率', minWidth: 62 },
-  { key: 'crc', label: 'CRC', minWidth: 60 }
+  { key: 'crc', label: 'CRC统计', minWidth: 60 }
 ]
 
 // 接口表的「设备名」前导列：抓取配置中 sysname 之后的值（如 HIHK-BC-CMNET-RT01-NE5000E-L1），渲染在「接口」列之前
 const deviceNameCol = [{ key: 'deviceName', label: '设备名', minWidth: 200 }]
 
 const arColumns = [
-  { key: 'ethTrunk', label: '归属聚合接口', minWidth: 110 },
-  { key: 'portStatus', label: '端口状态', minWidth: 80 },
+  { key: 'ethTrunk', label: '聚合口', minWidth: 110 },
+  { key: 'portStatus', label: '物理状态', minWidth: 80 },
+  { key: 'protoStatus', label: '协议状态', minWidth: 80 },
   { key: 'vrf', label: 'VRF', minWidth: 165 },
-  { key: 'isisCost', label: 'ISIS Cost', minWidth: 80 },
-  { key: 'ipv4', label: 'IPv4', minWidth: 115 },
-  { key: 'ipv6', label: 'IPv6', minWidth: 190 },
-  { key: 'opticalPower', label: '光功率', minWidth: 172 },
-  { key: 'bandwidthUtil', label: '入/出利用率', minWidth: 95 },
-  { key: 'mtuL1L2', label: 'LAN/WAN', minWidth: 82 },
+  { key: 'isisCost', label: 'COST值', minWidth: 120 },
+  { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
+  { key: 'ipv6', label: 'IPv6地址', minWidth: 190 },
+  { key: 'rxWarningRange', label: '收光范围', minWidth: 115 },
+  { key: 'txWarningRange', label: '发光范围', minWidth: 115 },
+  { key: 'rxPower', label: '收光值', minWidth: 150 },
+  { key: 'txPower', label: '发光值', minWidth: 150 },
+  { key: 'inUti', label: '入向流量', minWidth: 90 },
+  { key: 'outUti', label: '出向流量', minWidth: 90 },
+  { key: 'mtuL1L2', label: '传输模式', minWidth: 82 },
   { key: 'interfaceRate', label: '速率', minWidth: 60 },
   { key: 'moduleType', label: '模块类型', minWidth: 90 },
-  { key: 'moduleDistance', label: '模块距离', minWidth: 73 },
+  { key: 'moduleDistance', label: '传输距离', minWidth: 73 },
   { key: 'mtu', label: 'MTU', minWidth: 55 },
-  { key: 'packetLossRate', label: '丢包率', minWidth: 62 },
-  { key: 'crc', label: 'CRC', minWidth: 60 }
+  { key: 'crc', label: 'CRC统计', minWidth: 60 }
+]
+
+// 聚合口(解析)列定义（从左到右：设备名(前导)/聚合口(主键)/聚合口状态/聚合口成员信息/物理口状态/聚合口描述/IPv4地址/IPv6地址）
+const trunkColumns = [
+  { key: 'trunkStatus', label: '聚合口状态', minWidth: 100 },
+  { key: 'members', label: '聚合口成员信息', minWidth: 260 },
+  { key: 'portStatus', label: '物理口状态', minWidth: 120 },
+  { key: 'description', label: '聚合口描述', minWidth: 220 },
+  { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
+  { key: 'ipv6', label: 'IPv6地址', minWidth: 190 }
 ]
 
 // IPV4 路由表（配置解析·设备状态页，仅解析展示，不参与对比）
@@ -698,6 +757,7 @@ const parseModulesForExport = computed(() => {
     { def: PARSE_MODULE_DEFS.arp, list: arpList, getDiffInfo: arpGetDiff },
     { def: PARSE_MODULE_DEFS.ipv6neigh, list: ipv6neighList, getDiffInfo: ipv6neighGetDiff },
     { def: { title: '接口信息', keyField: 'interfaceName', keyLabel: '接口', boolFields: [], columns: [...deviceNameCol, ...arColumns] }, list: ifaceList, getDiffInfo: ifaceGetDiff },
+    { def: { title: '聚合口', keyField: 'interfaceName', keyLabel: '聚合口', boolFields: [], columns: [...deviceNameCol, ...trunkColumns] }, list: trunkList, getDiffInfo: noDiff },
     { def: { title: 'IPV4路由表', keyField: 'proto', keyLabel: '协议类别', boolFields: [], columns: routingCols }, list: routingList, getDiffInfo: routingGetDiff },
     { def: PARSE_MODULE_DEFS.globalConfig, list: globalList, getDiffInfo: noDiff }
   ]

@@ -2,7 +2,7 @@
 // compare.js 只负责：调度 Worker（或主线程回退）→ 把结果写回响应式 store。
 
 // src/utils/compare.js
-import { parseConfigForEthTrunkMembers } from './deviceParser.js'
+import { parseConfigForEthTrunkMembers, parseEthTrunks } from './deviceParser.js'
 import { useBgpModule } from './bgp.js'
 import { useIsisModule } from './isis.js'
 import { useLdpModule } from './ldp.js'
@@ -40,7 +40,7 @@ const { parseLdpSessionLog, mergeLdpToTable } = ldpMod
 const { parseLdpPeerLog, mergeLdpPeerToTable } = ldpPeerMod
 const { parseSrv6SidLog, mergeSrv6SidToTable } = srv6Mod
 const { parseSrv6TePolicyLog, mergeSrv6TePolicyToTable } = srv6TePolicyMod
-const { parseInterfaceInfoLog, mergeInterfaceToTable, parseConfigForIsisCost, parseConfigForIpAddress, parseConfigForDescription, parseInterfaceBrief, parseConfigForVrf } = ifaceMod
+const { parseInterfaceInfoLog, mergeInterfaceToTable, parseConfigForIsisCost, isisCostDisplay, parseConfigForIpAddress, parseConfigForDescription, parseInterfaceBrief, parseConfigForVrf } = ifaceMod
 const { parseRoutingStatLog, mergeRoutingStatToTable } = routingStatMod
 const { parseLldpNeighborBrief } = lldpMod
 const { parseOspfPeerLog, mergeOspfPeerToTable } = ospfMod
@@ -120,7 +120,7 @@ function parseInterfaceSummary(text) {
   const ifConfigMap = parseConfigIfBlocks(text)
   for (const [ifName, portStatus] of Object.entries(ifConfigMap)) {
     if (!rows.find(r => r.interfaceName === ifName)) {
-      rows.push({ interfaceName: ifName, vrf: '-', isisCost: '-', ipv4: '-', ipv6: '-', opticalPower: '-', bandwidthUtil: '-', mtuL1L2: '-', interfaceRate: '-', moduleType: '-', moduleDistance: '-', mtu: '-', srv6Sid: '-', packetLossRate: '-', crc: '-', portStatus, description: '-', ethTrunk: '-' })
+      rows.push({ interfaceName: ifName, vrf: '-', isisCost: '-', ipv4: '-', ipv6: '-', opticalPower: '-', bandwidthUtil: '-', mtuL1L2: '-', interfaceRate: '-', moduleType: '-', moduleDistance: '-', mtu: '-', srv6Sid: '-', packetLossRate: '-', crc: '-', portStatus, protoStatus: '-', description: '-', ethTrunk: '-' })
     }
   }
   return rows
@@ -350,8 +350,8 @@ export function runComparePure(beforeText, afterText, options = {}) {
   const beforeBriefMap = parseInterfaceBrief(beforeText), afterBriefMap = parseInterfaceBrief(afterText)
   const normIf = n => n.replace(/^\*+/, '').replace(/\s*\([^)]*\)\s*$/i, '')
   const beforeVrfMap = parseConfigForVrf(beforeText), afterVrfMap = parseConfigForVrf(afterText)
-  interfaceAfter.forEach(item => { item.ipv4 = (afterIpMap[item.interfaceName]?.ipv4)||'-'; item.ipv6 = (afterIpMap[item.interfaceName]?.ipv6)||'-'; if (afterDescMap[item.interfaceName]) item.description = afterDescMap[item.interfaceName]; const ab = afterBriefMap[item.interfaceName] ? item.interfaceName : (afterBriefMap[normIf(item.interfaceName)] ? normIf(item.interfaceName) : null); if (ab) item.bandwidthUtil = afterBriefMap[ab]; if (afterVrfMap[item.interfaceName]) item.vrf = afterVrfMap[item.interfaceName] })
-  interfaceBefore.forEach(item => { item.ipv4 = (beforeIpMap[item.interfaceName]?.ipv4)||'-'; item.ipv6 = (beforeIpMap[item.interfaceName]?.ipv6)||'-'; if (beforeDescMap[item.interfaceName]) item.description = beforeDescMap[item.interfaceName]; const bb = beforeBriefMap[item.interfaceName] ? item.interfaceName : (beforeBriefMap[normIf(item.interfaceName)] ? normIf(item.interfaceName) : null); if (bb) item.bandwidthUtil = beforeBriefMap[bb]; if (beforeVrfMap[item.interfaceName]) item.vrf = beforeVrfMap[item.interfaceName] })
+  interfaceAfter.forEach(item => { item.ipv4 = (afterIpMap[item.interfaceName]?.ipv4)||'-'; item.ipv6 = (afterIpMap[item.interfaceName]?.ipv6)||'-'; if (afterDescMap[item.interfaceName]) item.description = afterDescMap[item.interfaceName]; const ab = afterBriefMap[item.interfaceName] ? item.interfaceName : (afterBriefMap[normIf(item.interfaceName)] ? normIf(item.interfaceName) : null); if (ab) { const av = afterBriefMap[ab]; if (av) { item.inUti = av.inUti || '-'; item.outUti = av.outUti || '-'; item.bandwidthUtil = `${av.inUti}/${av.outUti}` } } if (afterVrfMap[item.interfaceName]) item.vrf = afterVrfMap[item.interfaceName] })
+  interfaceBefore.forEach(item => { item.ipv4 = (beforeIpMap[item.interfaceName]?.ipv4)||'-'; item.ipv6 = (beforeIpMap[item.interfaceName]?.ipv6)||'-'; if (beforeDescMap[item.interfaceName]) item.description = beforeDescMap[item.interfaceName]; const bb = beforeBriefMap[item.interfaceName] ? item.interfaceName : (beforeBriefMap[normIf(item.interfaceName)] ? normIf(item.interfaceName) : null); if (bb) { const bv = beforeBriefMap[bb]; if (bv) { item.inUti = bv.inUti || '-'; item.outUti = bv.outUti || '-'; item.bandwidthUtil = `${bv.inUti}/${bv.outUti}` } } if (beforeVrfMap[item.interfaceName]) item.vrf = beforeVrfMap[item.interfaceName] })
 
   // 归属聚合接口(ethTrunk)：配置态 trunk 成员映射反查回填（覆盖 name/ip/desc 所有配对分支及未配对端口）
   const beforeTrunkMap = parseConfigForEthTrunkMembers(beforeText)
@@ -542,8 +542,8 @@ export function runComparePure(beforeText, afterText, options = {}) {
       if (nameFallback && afterItem.interfaceName !== nameFallback.interfaceName) {
         matchedAfterKeys.add(nameFallback.interfaceName)
       }
-      beforeItem.isisCost = beforeCostMap[beforeItem.interfaceName] || '-'
-      afterItem.isisCost = afterCostMap[afterItem.interfaceName] || '-'
+      beforeItem.isisCost = isisCostDisplay(beforeCostMap[beforeItem.interfaceName])
+      afterItem.isisCost = isisCostDisplay(afterCostMap[afterItem.interfaceName])
       const diffFields = []
       interfaceCompareFields.forEach(f => {
         if (normVal(beforeItem[f]) !== normVal(afterItem[f])) {
@@ -556,7 +556,7 @@ export function runComparePure(beforeText, afterText, options = {}) {
     } else {
       // 隐藏「已删除」中变更前本身就是非活跃端口（down / *Down 等）的条目，避免过度告警
       if (!isUp(beforeItem)) continue
-      beforeItem.isisCost = beforeCostMap[beforeItem.interfaceName] || '-'
+      beforeItem.isisCost = isisCostDisplay(beforeCostMap[beforeItem.interfaceName])
       interfaceFinal.push({ ...beforeItem, beforeInterfaceName: beforeItem.interfaceName, afterInterfaceName: '已删除', interfaceName: `${beforeItem.interfaceName} vs 已删除`, portStatus: '已失效', isConsistent: false, configDiffFields: [{ field: 'portStatus', beforeVal: String(beforeItem.portStatus || '-'), afterVal: '已失效' }] })
     }
   }
@@ -576,7 +576,7 @@ export function runComparePure(beforeText, afterText, options = {}) {
         continue
       }
       matchedAfterKeys.add(afterItem.interfaceName)
-      afterItem.isisCost = afterCostMap[afterItem.interfaceName] || '-'
+      afterItem.isisCost = isisCostDisplay(afterCostMap[afterItem.interfaceName])
       interfaceFinal.push({ ...afterItem, beforeInterfaceName: '新增端口', afterInterfaceName: afterItem.interfaceName, interfaceName: `新增端口 vs ${afterItem.interfaceName}`, portStatus: '新增端口', isConsistent: false, configDiffFields: [{ field: 'portStatus', beforeVal: '-', afterVal: String(afterItem.portStatus || '-') }] })
     }
   }
@@ -631,7 +631,7 @@ export function loadSinglePure(text) {
   const lldp = parseLldpNeighborBrief(text).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
   const ifaceBrief = parseInterfaceBrief(text)
   const normIfLocal = n => n.replace(/^\*+/, '').replace(/\s*\([^)]*\)\s*$/i, '')
-  iface.forEach(i => { const bk = ifaceBrief[i.interfaceName] ? i.interfaceName : (ifaceBrief[normIfLocal(i.interfaceName)] ? normIfLocal(i.interfaceName) : null); if (bk) i.bandwidthUtil = ifaceBrief[bk] })
+  iface.forEach(i => { const bk = ifaceBrief[i.interfaceName] ? i.interfaceName : (ifaceBrief[normIfLocal(i.interfaceName)] ? normIfLocal(i.interfaceName) : null); if (bk) { const bv = ifaceBrief[bk]; if (bv) { i.inUti = bv.inUti || '-'; i.outUti = bv.outUti || '-' } } })
 
   return {
     bgp,
@@ -800,6 +800,7 @@ export function parseDeviceProtocolsPure(text, vendor, subtype) {
   return {
     deviceInfo,
     interfaces: deviceInfo.interfaces,
+    ethTrunks: parseEthTrunks(text),
     bgp,
     ospf,
     isis,

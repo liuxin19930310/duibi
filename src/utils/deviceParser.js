@@ -29,10 +29,18 @@ function createRow(interfaceName) {
     ipv6: '-',
     vrf: '-',
     portStatus: '-',
+    protoStatus: '-',
     isisCost: '-',
     interfaceRate: '-',
     opticalPower: '-',
-    bandwidthUtil: '-',
+    rxWarningRange: '-',
+    txWarningRange: '-',
+    rxPower: '-',
+    txPower: '-',
+    rxPowerOk: null,
+    txPowerOk: null,
+    inUti: '-',
+    outUti: '-',
     mtuL1L2: '-',
     mtu: '-',
     moduleType: '-',
@@ -55,7 +63,9 @@ function parseConfigInterfaces(text, vendor) {
   let ifMatch
   while ((ifMatch = ifRegex.exec(text)) !== null) {
     const ifName = ifMatch[1]
-    if (/^(NULL|LoopBack)/i.test(ifName) && !ifName.includes('0')) continue
+    // 忽略 LoopBack / NULL / Eth-Trunk 聚合口（成员口名为 GE/100GE，不受影响）
+    if (/^(NULL|LoopBack)/i.test(ifName)) continue
+    if (/^Eth-Trunk/i.test(ifName)) continue
     if (seen.has(ifName)) continue
     seen.add(ifName)
 
@@ -66,7 +76,7 @@ function parseConfigInterfaces(text, vendor) {
     const blockMatch = restText.match(/^(\s[\s\S]*?)(?=\n\S|\n#$)/)
     const block = blockMatch ? blockMatch[1] : ''
 
-    const descMatch = block.match(/description\s+(.+)/i)
+    const descMatch = block.match(/^\s*description[ \t]+(.+)$/im)
     if (descMatch) row.description = descMatch[1].trim()
 
     const ipv4Match = block.match(/ip address\s+(\S+)\s+(\S+)/i)
@@ -94,9 +104,6 @@ function parseConfigInterfaces(text, vendor) {
 
     const rateMatch = block.match(/speed\s+(\S+)/i)
     if (rateMatch) row.interfaceRate = rateMatch[1]
-
-    const isisMatch = block.match(/isis cost\s+(\d+)/i)
-    if (isisMatch) row.isisCost = isisMatch[1]
 
     const srv6Match = block.match(/segment-routing ipv6\s+(\S+)/i)
     if (srv6Match) row.srv6Sid = srv6Match[1]
@@ -138,10 +145,10 @@ function parseInterfaceInfoLog(logText) {
     const row = createRow(interfaceName)
     row.portStatus = portStatus
 
-    const descMatch = blockText.match(/Description:\s*(.*)/i)
-    if (descMatch) row.description = descMatch[1].trim()
+    const descMatch = blockText.match(/Description:[ \t]*([^\r\n]*)/i)
+    if (descMatch && descMatch[1].trim()) row.description = descMatch[1].trim()
 
-    const trunkMatch = blockText.match(/eth-trunk\s+(\d+)/i)
+    const trunkMatch = blockText.match(/eth-trunk[ \t]+(\d+)/i)
     if (trunkMatch) row.ethTrunk = `Eth-Trunk${trunkMatch[1]}`
 
     // Tunnel 接口特殊处理：unnumbered 地址从 LoopBack 借用
@@ -149,52 +156,74 @@ function parseInterfaceInfoLog(logText) {
     if (unnumMatch) row.ipv4 = unnumMatch[1] + '/' + unnumMatch[2]
 
     let rxVals = [], txVals = []
-    let multiRxTxRegex = /Rx Power\[(\d+)\]:\s*([-.\d]+)dBm,\s*Tx\1 Power:\s*([-.\d]+)dBm/gi
+    let multiRxTxRegex = /Rx Power\[(\d+)\]:[ \t]*([-.\d]+)dBm,[ \t]*Tx\1 Power:[ \t]*([-.\d]+)dBm/gi
     let match
     while ((match = multiRxTxRegex.exec(blockText)) !== null) {
       rxVals.push(match[2]); txVals.push(match[3])
     }
     if (rxVals.length === 0) {
-      multiRxTxRegex = /Rx(\d+) Power:\s*([-.\d]+)dBm,\s*Tx\1 Power:\s*([-.\d]+)dBm/gi
+      multiRxTxRegex = /Rx(\d+) Power:[ \t]*([-.\d]+)dBm,[ \t]*Tx\1 Power:[ \t]*([-.\d]+)dBm/gi
       while ((match = multiRxTxRegex.exec(blockText)) !== null) {
         rxVals.push(match[2]); txVals.push(match[3])
       }
     }
     if (rxVals.length === 0) {
-      const singleRxMatch = blockText.match(/(?:Rx Power(?::|\[\d+\]:))\s*([-.\d]+)dBm/i)
-      const singleTxMatch = blockText.match(/(?:Tx Power(?::|\[\d+\]:))\s*([-.\d]+)dBm/i)
+      const singleRxMatch = blockText.match(/(?:Rx Power(?::|\[\d+\]:))[ \t]*([-.\d]+)dBm/i)
+      const singleTxMatch = blockText.match(/(?:Tx Power(?::|\[\d+\]:))[ \t]*([-.\d]+)dBm/i)
       if (singleRxMatch && singleTxMatch) {
         rxVals.push(singleRxMatch[1]); txVals.push(singleTxMatch[1])
       }
     }
+    // 收光值/发光值：四路整合为 a|b|c|d，单路取单值；无光（-40.00 占位）也原样显示
     if (rxVals.length > 0) {
-      // ★ -40.00 dBm 是华为默认占位值（无光模块/光纤未接），替换为 N/A
-      const fmtVal = v => v === '-40.00' ? 'N/A' : v
-      rxVals = rxVals.map(fmtVal)
-      txVals = txVals.map(fmtVal)
-      const allNA = rxVals.every(v => v === 'N/A') && txVals.every(v => v === 'N/A')
-      row.opticalPower = allNA ? 'N/A' : `Rx:${rxVals.join('|')} Tx:${txVals.join('|')}`
+      row.rxPower = rxVals.join('|')
+      row.txPower = txVals.join('|')
+      // 兼容字段：光功率（Rx:.. Tx:.. 合成），供配置对比页 git 版「光功率」列
+      row.opticalPower = `Rx:${rxVals.join('|')} Tx:${txVals.join('|')}`
     }
 
-    const lanWanMatch = blockText.match(/\b(LAN|WAN)\s+full-duplex\s+mode/i)
+    // 收光/发光告警范围：兼容两种格式
+    //   A（100GE 四通道）：Rx Warning range: [-10.604,  4.499]dBm, Tx Warning range: [-4.300,  4.499]dBm（Rx/Tx 同一行）
+    //   B（GE/10GE 单通道）：Rx Power:  -4.32dBm, Warning range: [-14.400,  0.499]dBm（无 Rx Warning range 前缀，跟在 Power 后）
+    const rxRangeMatch = blockText.match(/Rx[ \t]+Warning[ \t]+range:[ \t]*(\[[^\]]+\])/i)
+      || blockText.match(/Rx[ \t]+Power:[^\r\n]*?Warning[ \t]+range:[ \t]*(\[[^\]]+\])/i)
+    if (rxRangeMatch) row.rxWarningRange = rxRangeMatch[1]
+    const txRangeMatch = blockText.match(/Tx[ \t]+Warning[ \t]+range:[ \t]*(\[[^\]]+\])/i)
+      || blockText.match(/Tx[ \t]+Power:[^\r\n]*?Warning[ \t]+range:[ \t]*(\[[^\]]+\])/i)
+    if (txRangeMatch) row.txWarningRange = txRangeMatch[1]
+
+    // 收光值/发光值是否在告警范围内（true=全部在范围内→绿, false=有超范围→红, null=无数据/全N/A→不着色）
+    const rangeVals = (s) => { const m = s && s.match(/\[(-?[\d.]+),\s*(-?[\d.]+)\]/); return m ? [parseFloat(m[1]), parseFloat(m[2])] : null }
+    const judgePower = (valsStr, rangeStr) => {
+      const range = rangeVals(rangeStr)
+      if (!range || !valsStr || valsStr === '-') return null
+      // -40.00 = 无光占位值，不参与范围判定（无光口不着红绿）
+      const nums = valsStr.split('|').filter(v => v !== '-40.00').map(Number)
+      if (!nums.length) return null
+      return nums.every(v => v >= range[0] && v <= range[1])
+    }
+    row.rxPowerOk = judgePower(row.rxPower, row.rxWarningRange)
+    row.txPowerOk = judgePower(row.txPower, row.txWarningRange)
+
+    const lanWanMatch = blockText.match(/\b(LAN|WAN)[ \t]+full-duplex[ \t]+mode/i)
     if (lanWanMatch) row.mtuL1L2 = lanWanMatch[1]
 
-    const rateMatch = blockText.match(/Port BW:\s*([^\s,]+)/i)
+    const rateMatch = blockText.match(/Port BW:[ \t]*([^\s,]+)/i)
     if (rateMatch) row.interfaceRate = rateMatch[1]
 
-    const modeMatch = blockText.match(/Transceiver Mode:\s*(.+)/i)
-    if (modeMatch) row.moduleType = modeMatch[1].trim()
+    const modeMatch = blockText.match(/Transceiver Mode:[ \t]*([^\r\n]*)/i)
+    if (modeMatch && modeMatch[1].trim()) row.moduleType = modeMatch[1].trim()
 
-    const distMatch = blockText.match(/Transmission Distance:\s*(\S+)/i)
+    const distMatch = blockText.match(/Transmission Distance:[ \t]*(\S+)/i)
     if (distMatch) row.moduleDistance = distMatch[1]
 
     const mtuMatch = blockText.match(/The Maximum Transmit Unit is (\d+)/i)
     if (mtuMatch) row.mtu = mtuMatch[1]
 
-    const lossMatch = blockText.match(/Lost:\s*(\d+)\s+packets/i)
+    const lossMatch = blockText.match(/Lost:[ \t]*(\d+)[ \t]+packets/i)
     if (lossMatch) row.packetLossRate = lossMatch[1]
 
-    const crcMatch = blockText.match(/CRC:\s*(\d+)\s+packets/i)
+    const crcMatch = blockText.match(/CRC:[ \t]*(\d+)[ \t]+packets/i)
     if (crcMatch) row.crc = crcMatch[1]
 
     statusMap[interfaceName] = row
@@ -220,7 +249,7 @@ function parseInterfaceInfoLog(logText) {
   return statusMap
 }
 
-// ===================== 解析 display interface brief 回显（带宽利用率） =====================
+// ===================== 解析 display interface brief 回显（入/出向流量 InUti/OutUti） =====================
 
 function parseInterfaceBrief(logText) {
   const utilMap = {}
@@ -232,13 +261,19 @@ function parseInterfaceBrief(logText) {
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim()
 
+    // 进入触发1：命令行回显（兼容老采集脚本）
     if (lines[i].includes('display interface brief') || /display\s+int(erface)?\s+brief/i.test(lines[i])) {
       inBrief = true
       headerIdx = -1
       continue
     }
-
     if (!inBrief) {
+      // 进入触发2（双保险）：表头双列命中，抗「命令行被剥」场景
+      if (/\bInUti\b/.test(trimmed) && /\bOutUti\b/.test(trimmed) && !/^display/i.test(trimmed)) {
+        inBrief = true
+        headerIdx = i
+        continue
+      }
       if (/^[<>]/.test(trimmed) || /^display\s+(?!interface\s+brief)/i.test(trimmed)) continue
       continue
     }
@@ -257,11 +292,9 @@ function parseInterfaceBrief(logText) {
     if (headerIdx < 0) continue
 
     if (!trimmed) continue
-    // 跳过 Eth-Trunk 成员行（行首有空格缩进，不作为独立接口）
-    if (lines[i] && lines[i].length > 0 && lines[i][0] === ' ') continue
-    const parts = trimmed.split(/\s+/)
     if (/^---+$/.test(trimmed)) continue
 
+    const parts = trimmed.split(/\s+/)
     let inUtiIdx = -1, outUtiIdx = -1
     for (let j = 0; j < parts.length; j++) {
       if (parts[j].includes('%')) {
@@ -270,13 +303,88 @@ function parseInterfaceBrief(logText) {
       }
     }
     if (inUtiIdx >= 0 && outUtiIdx >= 0 && inUtiIdx !== outUtiIdx) {
-      // 去掉速率后缀 (10G)/(40G)/(100G) 等，使接口名与配置中的 interface 名对齐
-      // 去掉速率后缀 (10G)/(10GE)/(40GE)/(100GE)/(25GE)/...，使接口名与配置中的 interface 名对齐
       const ifName = parts[0].replace(/^\*+/, '').replace(/\s*\([^)]*\)\s*$/i, '')
-      utilMap[ifName] = `${parts[inUtiIdx]}/${parts[outUtiIdx]}`
+      // 忽略规则：LoopBack / NULL / Eth-Trunk 聚合口忽略；成员口（缩进行）保留
+      if (/^(LoopBack|NULL)/i.test(ifName)) continue
+      const isMember = lines[i][0] === ' ' || lines[i][0] === '\t'
+      if (/^Eth-Trunk/i.test(ifName) && !isMember) continue
+      utilMap[ifName] = { inUti: parts[inUtiIdx], outUti: parts[outUtiIdx] }
     }
   }
   return utilMap
+}
+
+// ===================== 从 display interface brief 提取接口名清单（主数据源） =====================
+
+// 返回 brief 中的接口名清单（含实测 PHY/Protocol 状态），已应用忽略规则。
+// 用途：作为「接口」列表头的主数据源，与配置段并集（配置段补缺），成员口进表。
+function parseBriefInterfaces(logText) {
+  const result = []
+  if (!logText) return result
+  const lines = logText.split('\n')
+  let inBrief = false
+  let headerIdx = -1
+  const seen = new Set()
+  let currentTrunk = null
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+
+    if (lines[i].includes('display interface brief') || /display\s+int(erface)?\s+brief/i.test(lines[i])) {
+      inBrief = true
+      headerIdx = -1
+      continue
+    }
+    if (!inBrief) {
+      if (/\bInUti\b/.test(trimmed) && /\bOutUti\b/.test(trimmed) && !/^display/i.test(trimmed)) {
+        inBrief = true
+        headerIdx = i
+        continue
+      }
+      if (/^[<>]/.test(trimmed) || /^display\s+(?!interface\s+brief)/i.test(trimmed)) continue
+      continue
+    }
+
+    if (/^[<>]/.test(trimmed) || (/^display/i.test(trimmed) && !/interface\s+brief/i.test(trimmed))) {
+      inBrief = false
+      continue
+    }
+    if (trimmed.includes(':') && !trimmed.includes('%')) continue
+    if (headerIdx < 0 && /\bInUti\b/.test(trimmed) && /\bOutUti\b/.test(trimmed)) {
+      headerIdx = i
+      continue
+    }
+    if (headerIdx < 0) continue
+    if (!trimmed) continue
+    if (/^---+$/.test(trimmed)) continue
+
+    const parts = trimmed.split(/\s+/)
+    let inUtiIdx = -1, outUtiIdx = -1
+    for (let j = 0; j < parts.length; j++) {
+      if (parts[j].includes('%')) {
+        if (inUtiIdx === -1) inUtiIdx = j
+        else if (outUtiIdx === -1) outUtiIdx = j
+      }
+    }
+    if (inUtiIdx < 0 || outUtiIdx < 0 || inUtiIdx === outUtiIdx) continue
+
+    const ifName = parts[0].replace(/^\*+/, '').replace(/\s*\([^)]*\)\s*$/i, '')
+    if (/^(LoopBack|NULL)/i.test(ifName)) continue
+    const isMember = lines[i][0] === ' ' || lines[i][0] === '\t'
+
+    // 记录聚合口归属：遇到 Eth-Trunk 聚合逻辑口（顶格）时更新 currentTrunk，
+    // 其后缩进的成员行即可归属到该聚合口；遇到普通顶格接口时清空，避免误继承。
+    if (/^Eth-Trunk/i.test(ifName)) {
+      if (!isMember) { currentTrunk = ifName; continue } // 聚合口本身忽略，仅记录归属
+    } else if (!isMember) {
+      currentTrunk = null
+    }
+
+    if (seen.has(ifName)) continue
+    seen.add(ifName)
+    result.push({ name: ifName, phy: parts[1] || '-', proto: parts[2] || '-', ethTrunk: isMember ? (currentTrunk || '-') : '-' })
+  }
+  return result
 }
 
 // ===================== 从配置中提取 IP 地址 =====================
@@ -313,8 +421,10 @@ function parseConfigForIpAddress(configText) {
   return ipMap
 }
 
-// ===================== 从配置中提取 ISIS Cost =====================
+// ===================== 从配置中提取 COST值（IPv4 + IPv6 双采集） =====================
 
+// 返回: { 接口名: { v4: '20000'|null, v6: '20000'|null } }
+//   v4 来自 `isis cost N [level-x]`，v6 来自 `isis ipv6 cost N [level-x]`（两者互斥，正则天然区分）
 function parseConfigForIsisCost(configText) {
   const costMap = {}
   if (!configText) return costMap
@@ -329,11 +439,29 @@ function parseConfigForIsisCost(configText) {
     if (ifMatch) { currentInterface = ifMatch[1]; continue }
 
     if (currentInterface) {
-      const costMatch = trimmed.match(/^isis\s+cost\s+(\d+)/i)
-      if (costMatch && !trimmed.includes('ipv6')) costMap[currentInterface] = costMatch[1]
+      const v4Match = trimmed.match(/^isis\s+cost\s+(\d+)/i)
+      if (v4Match) {
+        const e = costMap[currentInterface] || (costMap[currentInterface] = { v4: null, v6: null })
+        e.v4 = v4Match[1]
+        continue
+      }
+      const v6Match = trimmed.match(/^isis\s+ipv6\s+cost\s+(\d+)/i)
+      if (v6Match) {
+        const e = costMap[currentInterface] || (costMap[currentInterface] = { v4: null, v6: null })
+        e.v6 = v6Match[1]
+      }
     }
   }
   return costMap
+}
+
+// 展示值："v4|v6"（如 20000|20000），缺侧用 '-'；两侧全缺返回 '-'（不显示 '-|-')
+function isisCostDisplay(entry) {
+  if (!entry) return '-'
+  const v4 = entry.v4 || '-'
+  const v6 = entry.v6 || '-'
+  if (v4 === '-' && v6 === '-') return '-'
+  return `${v4}|${v6}`
 }
 
 // ===================== 从配置中提取描述 =====================
@@ -386,6 +514,107 @@ function parseConfigForEthTrunkMembers(configText) {
   return trunkMemberMap
 }
 
+// ===================== 解析 Eth-Trunk 聚合口（配置解析·聚合口面板） =====================
+
+// 返回聚合口行数组：interfaceName/deviceName/description/mtu/ipv4/ipv6/isisCost(v4|v6)/
+//   trunkStatus(聚合口自身 brief PHY)/portStatus(成员物理口状态汇总)/protoStatus/inUti/outUti/members
+function parseEthTrunks(text) {
+  const result = []
+  if (!text) return result
+  const sysname = (text.match(/\bsysname\s+(\S+)/i) || [])[1] || ''
+  const seen = new Set()
+  const blockRegex = /^interface\s+(Eth-Trunk\d+)\s*$/gim
+  let m
+  while ((m = blockRegex.exec(text)) !== null) {
+    const name = m[1]
+    if (seen.has(name)) continue
+    seen.add(name)
+    const rest = text.slice(m.index + m[0].length)
+    const bm = rest.match(/^(\s[\s\S]*?)(?=\n\S|\n#$)/) || rest.match(/^(\s[\s\S]*)$/)
+    const block = bm ? bm[1] : ''
+    const row = { interfaceName: name, deviceName: sysname, description: '-', mtu: '-', ipv4: '-', ipv6: '-', isisCost: '-', trunkStatus: '-', portStatus: '-', protoStatus: '-', inUti: '-', outUti: '-', members: '-' }
+    const desc = block.match(/description\s+(.+)/i)
+    if (desc) row.description = desc[1].trim()
+    const mtu = block.match(/^\s*mtu\s+(\d+)\s*$/im)
+    if (mtu) row.mtu = mtu[1]
+    const ip4 = block.match(/ip\s+address\s+(\S+)\s+(\S+)/i)
+    if (ip4 && ip4[1] !== 'unnumbered') row.ipv4 = ip4[1] + '/' + netmaskToCidr(ip4[2])
+    const ip6 = block.match(/ipv6\s+address\s+(\S+)/i)
+    if (ip6) row.ipv6 = ip6[1]
+    const isisV4 = block.match(/^\s*isis\s+cost\s+(\d+)/im)
+    const isisV6 = block.match(/^\s*isis\s+ipv6\s+cost\s+(\d+)/im)
+    if (isisV4 || isisV6) row.isisCost = isisCostDisplay({ v4: isisV4 ? isisV4[1] : null, v6: isisV6 ? isisV6[1] : null })
+    result.push(row)
+  }
+  if (!result.length) return result
+
+  // brief：Eth-Trunk 顶格行取聚合口自身状态（trunkStatus/Proto/InUti/OutUti），
+  // 缩进成员行与普通顶格行记录 PHY 供「物理口状态」列汇总
+  const lines = text.split('\n')
+  let inBrief = false
+  let headerIdx = -1
+  const briefPhy = {}
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+    if (lines[i].includes('display interface brief') || /display\s+int(erface)?\s+brief/i.test(lines[i])) { inBrief = true; headerIdx = -1; continue }
+    if (!inBrief) {
+      if (/\bInUti\b/.test(trimmed) && /\bOutUti\b/.test(trimmed) && !/^display/i.test(trimmed)) { inBrief = true; headerIdx = i; continue }
+      continue
+    }
+    if (/^[<>]/.test(trimmed) || (/^display/i.test(trimmed) && !/interface\s+brief/i.test(trimmed))) { inBrief = false; continue }
+    if (trimmed.includes(':') && !trimmed.includes('%')) continue
+    if (headerIdx < 0 && /\bInUti\b/.test(trimmed) && /\bOutUti\b/.test(trimmed)) { headerIdx = i; continue }
+    if (headerIdx < 0) continue
+    if (!trimmed || /^---+$/.test(trimmed)) continue
+    // 只处理：顶格 Eth-Trunk 行 + 缩进成员行（行首空格需看原始行 lines[i]，trimmed 已丢失缩进）
+    const isIndent = lines[i][0] === ' ' || lines[i][0] === '\t'
+    if (!/^Eth-Trunk/i.test(trimmed) && !isIndent) continue
+    const parts = trimmed.split(/\s+/)
+    if (parts.length < 3) continue
+    const rawName = parts[0]
+    const phy = parts[1]
+    const proto = parts[2]
+    if (!isIndent && /^Eth-Trunk/i.test(rawName)) {
+      const name = rawName.replace(/^\*+/, '')
+      const row = result.find(r => r.interfaceName === name)
+      if (!row) continue
+      row.trunkStatus = phy
+      row.protoStatus = proto
+      let inUtiIdx = -1, outUtiIdx = -1
+      for (let j = 0; j < parts.length; j++) {
+        if (parts[j].includes('%')) { if (inUtiIdx === -1) inUtiIdx = j; else if (outUtiIdx === -1) outUtiIdx = j }
+      }
+      if (inUtiIdx >= 0 && outUtiIdx >= 0 && inUtiIdx !== outUtiIdx) { row.inUti = parts[inUtiIdx]; row.outUti = parts[outUtiIdx] }
+    } else {
+      // 成员行/普通顶格行：记录 PHY（成员口可能带 (10G) 速率后缀，归一化）
+      const ifName = rawName.replace(/^\*+/, '').replace(/\s*\([^)]*\)\s*$/i, '')
+      briefPhy[ifName] = phy
+    }
+  }
+
+  // display interface 回显补充（仅当 brief 未覆盖聚合口自身状态）
+  const statusMap = parseInterfaceInfoLog(text)
+  for (const row of result) {
+    const st = statusMap[row.interfaceName]
+    if (st) {
+      if (row.trunkStatus === '-' && st.portStatus !== '-') row.trunkStatus = st.portStatus
+      if (row.protoStatus === '-' && st.protoStatus !== '-') row.protoStatus = st.protoStatus
+    }
+  }
+
+  // 成员口：列表 + 物理口状态汇总（取自 brief PHY）
+  const trunkMap = parseConfigForEthTrunkMembers(text)
+  for (const row of result) {
+    const members = trunkMap[row.interfaceName]
+    if (Array.isArray(members) && members.length) {
+      row.members = members.join(', ')
+      const sts = members.map(n => briefPhy[n]).filter(v => v)
+      if (sts.length) row.portStatus = sts.join(',')
+    }
+  }
+  return result
+}
+
 // ===================== 合并接口状态到 rows =====================
 
 function mergeDisplayInterfaceToRows(rows, statusMap, briefMap, ipMap, costMap) {
@@ -394,13 +623,29 @@ function mergeDisplayInterfaceToRows(rows, statusMap, briefMap, ipMap, costMap) 
     const key = row.interfaceName
     // 利用率匹配：精确优先，回落到去速率后缀的归一化匹配（兼容 brief 输出带 (10G) 的情况）
     const bKey = briefMap[key] ? key : (briefMap[normIf(key)] ? normIf(key) : null)
-    if (bKey) row.bandwidthUtil = briefMap[bKey]
+    if (bKey) {
+      const bv = briefMap[bKey]
+      if (bv) {
+        row.inUti = bv.inUti || '-'
+        row.outUti = bv.outUti || '-'
+        // 兼容字段：入/出利用率（in/out 合成），供配置对比页 git 版「入/出利用率」列
+        row.bandwidthUtil = `${bv.inUti}/${bv.outUti}`
+      }
+    }
     const status = statusMap[key]
     if (status) {
-      // 优先用 display interface 中的字段覆盖
-      if (status.portStatus !== '-') row.portStatus = status.portStatus
+      // 物理状态以 display interface brief 的 PHY 为准，display interface 回显不再覆盖 portStatus（协议状态同理仅来自 brief Protocol）
+      // if (status.portStatus !== '-') row.portStatus = status.portStatus
       if (status.opticalPower !== '-') row.opticalPower = status.opticalPower
+      if (status.rxWarningRange !== '-') row.rxWarningRange = status.rxWarningRange
+      if (status.txWarningRange !== '-') row.txWarningRange = status.txWarningRange
+      if (status.rxPower !== '-') row.rxPower = status.rxPower
+      if (status.txPower !== '-') row.txPower = status.txPower
+      if (status.rxPowerOk !== undefined) row.rxPowerOk = status.rxPowerOk
+      if (status.txPowerOk !== undefined) row.txPowerOk = status.txPowerOk
       if (status.mtuL1L2 !== '-') row.mtuL1L2 = status.mtuL1L2
+      // 补缺：配置段无 mtu 时用 display interface 的 The Maximum Transmit Unit 值
+      if (row.mtu === '-' && status.mtu !== '-') row.mtu = status.mtu
       if (status.interfaceRate !== '-') row.interfaceRate = status.interfaceRate
       if (status.moduleType !== '-') row.moduleType = status.moduleType
       if (status.moduleDistance !== '-') row.moduleDistance = status.moduleDistance
@@ -415,7 +660,8 @@ function mergeDisplayInterfaceToRows(rows, statusMap, briefMap, ipMap, costMap) 
       if (ipMap[key].ipv4 !== '-') row.ipv4 = ipMap[key].ipv4
       if (ipMap[key].ipv6 !== '-') row.ipv6 = ipMap[key].ipv6
     }
-    if (costMap[key]) row.isisCost = costMap[key]
+    const costDisp = isisCostDisplay(costMap[key])
+    if (costDisp !== '-') row.isisCost = costDisp
   })
 }
 
@@ -477,12 +723,32 @@ function parseDeviceInfo(text, vendor) {
     if (m) info.mgmtIp = m[2]
   }
 
-  // ===== 接口解析（分两步：配置 + display interface 回显） =====
+  // ===== 接口解析 =====
+  // 第一步：从配置解析基础信息（已忽略 LoopBack / NULL / Eth-Trunk 聚合口）
+  const cfgRows = parseConfigInterfaces(text, vendor)
 
-  // 第一步：从配置解析基础信息
-  info.interfaces = parseConfigInterfaces(text, vendor)
+  // 第二步：以 display interface brief 为「接口」列主数据源，与配置段并集（配置段补缺）
+  // brief 提供实测 PHY/Protocol 状态，修正配置段默认全 UP 的偏差（display interface 回显之后会优先覆盖）
+  const briefIfs = parseBriefInterfaces(text)
+  const cfgNameSet = new Set(cfgRows.map(r => r.interfaceName))
+  briefIfs.forEach(b => {
+    if (cfgNameSet.has(b.name)) {
+      const row = cfgRows.find(r => r.interfaceName === b.name)
+      if (row) {
+        if (b.phy) row.portStatus = b.phy
+        if (b.proto) row.protoStatus = b.proto
+      }
+    } else {
+      const row = createRow(b.name)
+      row.portStatus = b.phy || '-'
+      row.protoStatus = b.proto || '-'
+      if (b.ethTrunk && b.ethTrunk !== '-') row.ethTrunk = b.ethTrunk
+      cfgRows.push(row)
+    }
+  })
+  info.interfaces = cfgRows
 
-  // 第二步：从 display interface 回显解析状态/物理字段
+  // 第三步：display interface 回显 + brief 利用率 + 配置 IP/COST 合并
   const statusMap = parseInterfaceInfoLog(text)
   const briefMap = parseInterfaceBrief(text)
   const ipMap = parseConfigForIpAddress(text)
@@ -491,8 +757,8 @@ function parseDeviceInfo(text, vendor) {
   // 合并
   mergeDisplayInterfaceToRows(info.interfaces, statusMap, briefMap, ipMap, costMap)
 
-  info.ifUp = info.interfaces.filter(r => r.portStatus === 'UP').length
-  info.ifDown = info.interfaces.filter(r => r.portStatus === 'Down').length
+  info.ifUp = info.interfaces.filter(r => /^up$/i.test(r.portStatus)).length
+  info.ifDown = info.interfaces.filter(r => /down/i.test(r.portStatus)).length
 
   // 设备名：抓取 sysname 之后的值（即 info.hostname），写入每个接口行，供接口表「设备名」列展示
   for (const r of info.interfaces) r.deviceName = info.hostname || ''
@@ -624,9 +890,12 @@ export {
   parseDeviceInfo,
   parseInterfaceInfoLog,
   parseInterfaceBrief,
+  parseBriefInterfaces,
   parseConfigForIpAddress,
   parseConfigForIsisCost,
+  isisCostDisplay,
   parseConfigForDescription,
   parseConfigForEthTrunkMembers,
+  parseEthTrunks,
   parseConfigForVrf,
 }

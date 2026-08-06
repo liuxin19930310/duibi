@@ -125,13 +125,15 @@ const isisCols = [
   { key: 'endXSid', label: 'End-X SID', minWidth: 210 }
 ]
 const ifaceCols = [
-  { key: 'ethTrunk', label: '归属聚合接口', minWidth: 110 },
-  { key: 'portStatus', label: '端口状态', minWidth: 73 },
+  { key: 'ethTrunk', label: '聚合口', minWidth: 110 },
+  { key: 'portStatus', label: '物理状态', minWidth: 73 },
+  { key: 'protoStatus', label: '协议状态', minWidth: 80 },
   { key: 'vrf', label: 'VRF', minWidth: 65 },
-  { key: 'isisCost', label: 'ISIS Cost', minWidth: 80 },
-  { key: 'ipv4', label: 'IPv4', minWidth: 115 },
-  { key: 'ipv6', label: 'IPv6', minWidth: 190 },
-  { key: 'bandwidthUtil', label: '入/出利用率', minWidth: 90 },
+  { key: 'isisCost', label: 'COST值', minWidth: 120 },
+  { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
+  { key: 'ipv6', label: 'IPv6地址', minWidth: 190 },
+  { key: 'inUti', label: '入向流量', minWidth: 90 },
+  { key: 'outUti', label: '出向流量', minWidth: 90 },
   { key: 'mtu', label: 'MTU', minWidth: 55 }
 ]
 const srv6Cols = [

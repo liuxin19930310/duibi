@@ -200,8 +200,10 @@ watch(() => route.meta.pageKey, (val) => {
   if (['hw-p', 'hw-i', 'text-diff', 'srv6-te-multi'].includes(val)) { nav.compare = true }
   // 进入配置解析页面时自动展开菜单
   if (val && val.startsWith('device-')) { nav.device = true }
-  // 进入华为·接口信息采集页时自动展开接口模块（单一模块，默认展开更直观）
+  // 切到各解析页时重置 activeModule，自动展开该页默认模块（否则残留上一页模块状态导致面板折叠）
   if (val === 'device-huawei-ar') { activeModule.value = 'interface' }
+  if (val === 'device-huawei-trunk') { activeModule.value = 'trunk' }
+  if (val === 'device-huawei') { activeModule.value = 'bgp' }
   if (val === 'device-global') { activeModule.value = 'global' }
 })
 
@@ -225,7 +227,7 @@ const viewProps = computed(() => {
   if (name === 'snapshot') return { onGoto: onGoto }
   if (name === 'live-device') return { onGoto: onGoto }
   if (name === 'settings') return { onOpenCollect: onCollectClick, onDeviceCollect: onDeviceCollectFromSettings }
-  if (name === 'device-huawei' || name === 'device-huawei-ar' || name === 'device-h3c') {
+  if (name === 'device-huawei' || name === 'device-huawei-ar' || name === 'device-huawei-trunk' || name === 'device-h3c') {
     return { ...compareDeviceCommon, onGoto: onGoto, onDeviceCollect: onDeviceCollectFromSettings }
   }
   return compareDeviceCommon
