@@ -29,8 +29,6 @@ export function screenCellVal(row, key, { getDiffInfo, keyField }) {
 }
 
 // 导出样式（参考用户提供的 222.xlsx 参考样式：表头微软雅黑11加粗白字+深蓝4472C4底+细灰边框居中；数据微软雅黑10黑字+细灰边框）
-const titleFill = { rgb: 'F2F2F2' }
-const titleFont = { name: 'Microsoft YaHei', sz: 12, bold: true, color: { rgb: '1F4E79' } }
 const headerFill = { rgb: '4472C4' }
 const headerFont = { name: 'Microsoft YaHei', sz: 11, bold: true, color: { rgb: 'FFFFFF' } }
 const baseFont = { name: 'Microsoft YaHei', sz: 10, color: { rgb: '000000' } }
@@ -67,8 +65,6 @@ function pushModuleRows(aoa, meta, m, { withConsistent }) {
     { key: 'description', label: '描述' }
   ]
   if (withConsistent) allCols.push({ key: 'isConsistent', label: '对比结果' })
-  aoa.push([m.title])
-  meta.push({ type: 'title' })
   aoa.push(allCols.map(c => c.label))
   meta.push({ type: 'header' })
   ;(m.list || []).forEach(row => {
@@ -93,12 +89,7 @@ function applySheetStyles(ws, aoa, meta, XLSX) {
   const rows = []
   for (let r = 0; r < aoa.length; r++) {
     const rowMeta = meta[r]
-    if (rowMeta.type === 'title') {
-      const cell = ws[XLSX.utils.encode_cell({ r, c: 0 })]
-      if (cell) cell.s = { fill: { patternType: 'solid', fgColor: titleFill }, font: titleFont, alignment: { horizontal: 'left', vertical: 'center' } }
-      merges.push({ s: { r, c: 0 }, e: { r, c: Math.max(maxCols - 1, 0) } })
-      rows.push({ hpt: 20 })
-    } else if (rowMeta.type === 'header') {
+    if (rowMeta.type === 'header') {
       for (let c = 0; c < aoa[r].length; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })]
         if (cell) cell.s = { fill: { patternType: 'solid', fgColor: headerFill }, font: headerFont, alignment: { horizontal: 'center', vertical: 'center' }, border: cellBorder }
@@ -125,7 +116,7 @@ function applySheetStyles(ws, aoa, meta, XLSX) {
   if (merges.length) ws['!merges'] = merges
   if (rows.length) ws['!rows'] = rows
   // 列宽：设备名/描述列按内容加宽，其余自适应默认
-  const headerLabels = aoa[1] || []
+  const headerLabels = aoa[0] || []
   ws['!cols'] = headerLabels.map(label => ({ wch: label === '描述' ? 60 : label === '设备名' ? 32 : 18 }))
 }
 
