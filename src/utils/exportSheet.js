@@ -55,19 +55,37 @@ const isDownVal = (v) => {
   if (s.includes(',')) return s.split(',').some(x => ['down', '*down', '^down', 'idle'].includes(x.trim()))
   return ['down', '*down', '^down', 'idle'].includes(s)
 }
+// BGP 邻居状态字体颜色（仅 Established 绿、Connect 橙 E26B0A；其余状态正常黑字）
+const bgpStateFont = (v) => {
+  const s = String(v ?? '').trim().toLowerCase()
+  if (s === 'established') return { rgb: '00AA00' }
+  if (s === 'connect') return { rgb: 'E26B0A' }
+  return null
+}
+// OSPF 邻居状态字体颜色（Full 绿 / 2-Way 橙 / Down、Init、Exstart 等异常 红；已失效/新增邻居正常黑字）
+const ospfStateFont = (v) => {
+  const s = String(v ?? '').trim().toLowerCase()
+  if (s === 'full') return { rgb: '00AA00' }
+  if (s === '2-way' || s === '2way') return { rgb: 'E26B0A' }
+  if (['down', 'init', 'attempt', 'exstart', 'exchange', 'loading'].includes(s)) return { rgb: 'FF0000' }
+  return null
+}
 
 // 单个模块 → 追加「标题行 + 表头行 + 数据行」到 aoa/meta
 // withConsistent=true 时多一列「对比结果」（配置对比用，含红/绿底标注）；false 时用于配置解析（单设备、无对比）
 function pushModuleRows(aoa, meta, m, { withConsistent }) {
-  const hasKeyInCols = (m.columns || []).some(c => c.key === m.keyField)
+  // 与 ProtoPanel 页面渲染顺序保持一致（所见即所得）：
+  // 前导列(如设备名) → 主键列(keyField/keyLabel) → 业务列(columns) → 描述(仅导出)
+  const lead = m.leadColumns || []
   const allCols = [
-    ...m.columns,
-    ...(hasKeyInCols ? [] : [{ key: m.keyField, label: m.keyLabel }]),
-    { key: 'description', label: '描述' }
+    ...lead,
+    { key: m.keyField, label: m.keyLabel },
+    ...(m.columns || []),
+    ...(m.withDescription !== false ? [{ key: 'description', label: '描述' }] : [])
   ]
   if (withConsistent) allCols.push({ key: 'isConsistent', label: '对比结果' })
   aoa.push(allCols.map(c => c.label))
-  meta.push({ type: 'header' })
+  meta.push({ type: 'header', cols: allCols, moduleKey: m.moduleKey })
   ;(m.list || []).forEach(row => {
     const vals = allCols.map(c => {
       if (withConsistent && c.key === 'isConsistent') {
@@ -80,7 +98,7 @@ function pushModuleRows(aoa, meta, m, { withConsistent }) {
       return v == null ? '-' : v
     })
     aoa.push(vals)
-    meta.push({ type: 'data', consistent: withConsistent ? row.isConsistent : undefined })
+    meta.push({ type: 'data', consistent: withConsistent ? row.isConsistent : undefined, moduleKey: m.moduleKey })
   })
 }
 
@@ -88,9 +106,13 @@ function applySheetStyles(ws, aoa, meta, XLSX) {
   const maxCols = Math.max(...aoa.map(r => r.length))
   const merges = []
   const rows = []
+  let curCols = null
+  let curModuleKey = 'bgp'
   for (let r = 0; r < aoa.length; r++) {
     const rowMeta = meta[r]
     if (rowMeta.type === 'header') {
+      curCols = rowMeta.cols || null
+      curModuleKey = rowMeta.moduleKey || 'bgp'
       for (let c = 0; c < aoa[r].length; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })]
         if (cell) cell.s = { fill: { patternType: 'solid', fgColor: headerFill }, font: headerFont, alignment: { horizontal: 'center', vertical: 'center' }, border: cellBorder }
@@ -98,14 +120,22 @@ function applySheetStyles(ws, aoa, meta, XLSX) {
       rows.push({ hpt: 16.5 })
     } else if (rowMeta.type === 'data') {
       // 配置解析（单设备）无对比，consistent 为 undefined → 不加红/绿底
-      const fill = rowMeta.consistent === false ? delFill : rowMeta.consistent === true ? okFill : null
+      const baseFill = rowMeta.consistent === false ? delFill : rowMeta.consistent === true ? okFill : null
       for (let c = 0; c < aoa[r].length; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })]
         if (!cell) continue
         const font = { ...baseFont }
-        // 状态类值着色（up 绿 / down 红，参考样式）
-        if (isUpVal(cell.v)) font.color = upColor
-        else if (isDownVal(cell.v)) font.color = downColor
+        let fill = baseFill
+        const colDef = curCols ? curCols[c] : null
+        if (colDef && colDef.key === 'neighborState') {
+          // 邻居状态列：按模块选择字体色（BGP: Established 绿 / Connect 橙；OSPF: Full 绿 / 2-Way 橙 / Down 等异常 红）
+          const stFont = curModuleKey === 'ospf' ? ospfStateFont(cell.v) : bgpStateFont(cell.v)
+          if (stFont) font.color = stFont
+        } else {
+          // 状态类值着色（up 绿 / down 红，参考样式）
+          if (isUpVal(cell.v)) font.color = upColor
+          else if (isDownVal(cell.v)) font.color = downColor
+        }
         const style = { font, alignment: { horizontal: 'left', vertical: 'center' }, border: cellBorder }
         if (fill) style.fill = { patternType: 'solid', fgColor: fill }
         if (typeof cell.v === 'string' && cell.v.includes('\n')) style.alignment = { horizontal: 'left', vertical: 'center', wrapText: true }

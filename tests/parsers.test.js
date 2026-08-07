@@ -144,6 +144,54 @@ test('runComparePure：纯解析+比对返回可克隆数据（Web Worker 协议
   // 结果必须可结构化克隆：仅含普通对象/数组/字符串/数字/布尔/null
   assert.equal(JSON.parse(JSON.stringify(result.bgp)).length, 2)
 })
+
+test('runComparePure：OSPF 邻接对比（matched 一致 / 删除邻居标记已失效 / v2+v3 均解析）', () => {
+  const before = `<HUAWEI>display ospf peer brief
+
+         OSPF Process 1 with Router ID 1.1.1.1
+                 Peer Statistic Information
+ Area Id         Interface                       Neighbor id     State
+ 0.0.0.0         GE1/0/1                        2.2.2.2         Full
+ 0.0.0.1         GE1/0/2                        3.3.3.3         Full
+ Total Peer(s): 2
+
+<HUAWEI>display ospfv3 peer
+
+         OSPFv3 Process (10)
+                 OSPFv3 Area (0.0.0.1)
+ Neighbor ID     Pri   State     Dead Time   Interface     Instance ID
+ 4.4.4.4         1     Full      38          GE1/0/3       0
+`
+  const after = `<HUAWEI>display ospf peer brief
+
+         OSPF Process 1 with Router ID 1.1.1.1
+                 Peer Statistic Information
+ Area Id         Interface                       Neighbor id     State
+ 0.0.0.0         GE1/0/1                        2.2.2.2         Full
+ Total Peer(s): 1
+
+<HUAWEI>display ospfv3 peer
+
+         OSPFv3 Process (10)
+                 OSPFv3 Area (0.0.0.1)
+ Neighbor ID     Pri   State     Dead Time   Interface     Instance ID
+ 4.4.4.4         1     Full      38          GE1/0/3       0
+`
+  const result = runComparePure(before, after)
+  assert.equal(result.counts.ospfCount, 3)
+  assert.equal(result.ospf.length, 3)
+  // 保留的 OSPFv2 邻接（GE1/0/1）应一致
+  const kept = result.ospf.find(o => o.interface === 'GE1/0/1')
+  assert.equal(kept.neighborState, 'Full')
+  assert.equal(kept.isConsistent, true)
+  // OSPFv3 邻接（GE1/0/3）应一致
+  const v3 = result.ospf.find(o => o.addressFamily === 'OSPFv3')
+  assert.equal(v3.isConsistent, true)
+  // 被删除的 OSPFv2 邻接（GE1/0/2 / 3.3.3.3）应标记 已失效
+  const lost = result.ospf.find(o => o.neighborId === '3.3.3.3')
+  assert.equal(lost.neighborState, '已失效')
+  assert.equal(lost.isConsistent, false)
+})
 test('parseLiveStatusPure：先 parse 再 merge（修复接口面板垃圾行 bug）', () => {
   const text = `<HUAWEI>display interface
 GigabitEthernet0/0/1 current state : UP (ifindex: 1)

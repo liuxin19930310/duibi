@@ -9,6 +9,7 @@ import { useInterfaceModule } from './interfaceInfo.js'
 import { buildOpticalPowerSubDiffs } from './interfaceInfo.js'
 import { useRoutingStatModule } from './routingStat.js'
 import { useLldpModule } from './lldp.js'
+import { useOspfModule } from './ospf.js'
 import { runCompareInWorker } from './parseWorker.js'
 
 // ===== 1. 创建对比侧独立的模块实例（与设备采集侧 DevicePage 各自独立、互不影响） =====
@@ -21,6 +22,7 @@ const srv6TePolicyMod = useSrv6TePolicyModule()
 const ifaceMod = useInterfaceModule()
 const routingStatMod = useRoutingStatModule()
 const lldpMod = useLldpModule()
+const ospfMod = useOspfModule()
 
 // 对比侧更新方法（写入对比侧私有实例，不影响设备采集侧）
 const updateBgp = bgpMod.updateNeighbors
@@ -32,6 +34,7 @@ const updateSrv6TePolicy = srv6TePolicyMod.updateNeighbors
 const updateInterface = ifaceMod.updateNeighbors
 const updateRoutingStat = routingStatMod.updateNeighbors
 const updateLldp = lldpMod.updateNeighbors
+const updateOspf = ospfMod.updateNeighbors
 
 
 
@@ -45,7 +48,8 @@ export const compareState = {
   srv6TePolicy: { list: srv6TePolicyMod.neighborList, getDiffInfo: srv6TePolicyMod.getDiffInfo },
   interface: { list: ifaceMod.neighborList, getDiffInfo: ifaceMod.getDiffInfo },
   routingStat: { list: routingStatMod.neighborList, getDiffInfo: routingStatMod.getDiffInfo },
-  lldp: { list: lldpMod.neighborList, getDiffInfo: lldpMod.getDiffInfo }
+  lldp: { list: lldpMod.neighborList, getDiffInfo: lldpMod.getDiffInfo },
+  ospf: { list: ospfMod.neighborList, getDiffInfo: ospfMod.getDiffInfo }
 }
 
 // ===== 4. 核心对比方法（暴露出去） =====
@@ -62,6 +66,7 @@ export async function runCompare(beforeText, afterText, options = {}) {
   updateInterface(result.interface)
   updateRoutingStat(result.routingStat)
   updateLldp(result.lldp)
+  updateOspf(result.ospf)
   return result.counts
 }
 
@@ -78,5 +83,6 @@ export async function loadSingle(text) {
   updateInterface(r.interface)
   updateRoutingStat(r.routingStat)
   updateLldp(r.lldp)
+  updateOspf(r.ospf)
   return r.counts
 }

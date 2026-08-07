@@ -21,6 +21,15 @@
       />
 
       <ProtoPanel
+        title="OSPF 协议" desc="邻接状态对比"
+        :list="ospfList" :getDiffInfo="ospfGetDiff"
+        keyField="interface" keyLabel="接口" :keyWidth="150"
+        stateField="neighborState" :resultWidth="100"
+        :columns="MODULE_DEFS.ospf.columns"
+        :boolFields="['auth']" moduleName="ospf" v-model:activeModule="localActive" :filterFocus="filterFocusModule" @focusFilter="onFocus"
+      />
+
+      <ProtoPanel
         title="LDP 协议" desc="会话对比"
         :list="ldpList" :getDiffInfo="ldpGetDiff"
         keyField="peerId" keyLabel="Peer ID" :keyWidth="140"
@@ -121,11 +130,13 @@ const routingStatList = compareState.routingStat.list
 const routingStatGetDiff = compareState.routingStat.getDiffInfo
 const ifaceList = compareState.interface.list
 const ifaceGetDiff = compareState.interface.getDiffInfo
+const ospfList = compareState.ospf.list
+const ospfGetDiff = compareState.ospf.getDiffInfo
 
 // ---- 模块列定义（模板与一键导出共用单一数据源） ----
 const MODULE_DEFS = {
   bgp: {
-    title: 'BGP 协议', keyField: 'neighborIp', keyLabel: '邻居 IP', boolFields: [],
+    title: 'BGP 协议', keyField: 'neighborIp', keyLabel: '邻居 IP', boolFields: [], moduleKey: 'bgp',
     columns: [
       { key: 'remoteAs', label: '邻居 AS', minWidth: 100 },
       { key: 'sessionState', label: '会话状态', minWidth: 120 },
@@ -146,6 +157,22 @@ const MODULE_DEFS = {
       { key: 'holdTime', label: 'Hold Time', minWidth: 100 },
       { key: 'uptime', label: 'UP Time', minWidth: 110 },
       { key: 'endXSid', label: 'End-X SID', minWidth: 210 }
+    ]
+  },
+  ospf: {
+    title: 'OSPF 协议', keyField: 'interface', keyLabel: '接口', boolFields: ['auth'], moduleKey: 'ospf',
+    columns: [
+      { key: 'addressFamily', label: '协议版本', minWidth: 90 },
+      { key: 'processId', label: '进程', minWidth: 80 },
+      { key: 'vpnInstance', label: 'VPN实例', minWidth: 180 },
+      { key: 'areaId', label: '区域', minWidth: 110 },
+      { key: 'neighborId', label: '邻居 Router ID', minWidth: 160 },
+      { key: 'neighborState', label: '状态', minWidth: 90 },
+      { key: 'routerId', label: '本端 Router ID', minWidth: 150 },
+      { key: 'cost', label: 'OSPF Cost', minWidth: 90 },
+      { key: 'auth', label: 'OSPF认证', minWidth: 90 },
+      { key: 'networkType', label: 'OSPF网络类型', minWidth: 120 },
+      { key: 'hello', label: 'Hello间隔', minWidth: 90 }
     ]
   },
   ldp: {
@@ -224,6 +251,7 @@ const { registerExportAll, setExportHasData, unregisterExportAll } = useExportAl
 const huaweiCompareModules = [
   { def: MODULE_DEFS.bgp, list: bgpList, getDiffInfo: bgpGetDiff },
   { def: MODULE_DEFS.isis, list: isisList, getDiffInfo: isisGetDiff },
+  { def: MODULE_DEFS.ospf, list: ospfList, getDiffInfo: ospfGetDiff },
   { def: MODULE_DEFS.ldp, list: ldpList, getDiffInfo: ldpGetDiff },
   { def: MODULE_DEFS.ldpPeer, list: ldpPeerList, getDiffInfo: ldpPeerGetDiff },
   { def: MODULE_DEFS.srv6, list: srv6List, getDiffInfo: srv6GetDiff },
@@ -243,7 +271,8 @@ const compareModulesForExport = computed(() => {
     keyField: m.def.keyField,
     keyLabel: m.def.keyLabel,
     columns: m.def.columns,
-    boolFields: m.def.boolFields
+    boolFields: m.def.boolFields,
+    moduleKey: m.def.moduleKey || 'bgp'
   }))
 })
 

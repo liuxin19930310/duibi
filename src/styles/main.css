@@ -98,8 +98,8 @@ body {
 
 /* ===== Element Plus 主题适配 ===== */
 .el-table {
-  --el-table-bg-color: transparent;
-  --el-table-tr-bg-color: transparent;
+  --el-table-bg-color: var(--bg2);
+  --el-table-tr-bg-color: var(--bg2);
   --el-table-header-bg-color: var(--bg3);
   --el-table-border-color: var(--table-border);
   --el-table-text-color: var(--t1);
@@ -107,8 +107,31 @@ body {
   font-size: 12px;
 }
 
+/* 表格单元格背景跟随主题（深色/浅色自动切换） */
+.el-table .el-table__cell,
+.el-table__body-wrapper .el-table__body .el-table__row > td.el-table__cell,
+.el-table__body-wrapper .el-table__body .el-table__row--striped > td.el-table__cell {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+}
+
+/* 空状态行也要跟随主题 */
+.el-table__empty-block,
+.el-table__empty-text {
+  background: var(--bg2) !important;
+  color: var(--t3) !important;
+}
+
 .el-table th.el-table__cell {
   font-weight: 600;
+  background: var(--bg3) !important;
+  color: var(--t2);
+}
+
+/* Element Plus 用 ::before 伪元素画行背景，必须一并覆盖 */
+.el-table .el-table__row > td.el-table__cell::before,
+.el-table__body-wrapper .el-table__body .el-table__row > td.el-table__cell::before {
+  background: var(--bg2) !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {

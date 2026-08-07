@@ -22,6 +22,12 @@
       </div>
     </div>
     <div v-else class="dev-result">
+      <div class="reimport-bar" :class="{ loading: importing }" @dragover.prevent @drop.prevent="!importing && $emit('drop', $event)">
+        <span class="ri-text">已解析：{{ fileName || '设备配置' }}</span>
+        <button class="ri-btn" type="button" :disabled="importing" @click="$emit('upload')">
+          {{ importing ? '解析中...' : '导入其他设备' }}
+        </button>
+      </div>
       <slot />
     </div>
   </div>
@@ -31,7 +37,8 @@
 defineProps({
   title: { type: String, default: '点击上传或拖拽配置文件到此处' },
   info: { default: null },
-  importing: { type: Boolean, default: false }
+  importing: { type: Boolean, default: false },
+  fileName: { type: String, default: '' }
 })
 
 defineEmits(['upload', 'drop'])
@@ -114,4 +121,41 @@ defineEmits(['upload', 'drop'])
 }
 
 .dev-result { }
+.reimport-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 8px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg2);
+  transition: all .25s;
+}
+.reimport-bar:hover {
+  border-color: var(--blue);
+  background: var(--blue-l);
+}
+.reimport-bar .ri-text {
+  font-size: 13px;
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reimport-bar .ri-btn {
+  flex: none;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s;
+}
+.reimport-bar .ri-btn:hover { opacity: .9; box-shadow: 0 4px 12px rgba(74,158,255,.3); }
+.reimport-bar .ri-btn:disabled { opacity: .6; cursor: default; }
 </style>

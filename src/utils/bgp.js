@@ -282,6 +282,9 @@ export function useBgpModule() {
     // vpnv4/vpnv6 all peer 无分段，靠命令行判断
     let currentAddressFamily = ''
     let currentCmdFamily = ''
+    // 标记当前是否处于 "Peer of IPv4/IPv6-family for vpn instance" 子段内
+    // 该子段之后的 VPN-Instance 对等体，类型取实例名而非 "Vpnv4 All"/"Vpnv6 All"
+    let inVpnInstanceSection = false
 
     // 两种表头都支持：
     //   Peer  AS  MsgRcvd  MsgSent  OutQ  Up/Down  State  RtRcv  RtAdv   （display bgp all summary / 传统）
@@ -304,6 +307,7 @@ export function useBgpModule() {
         currentCmdFamily = cmdMatch[1].toLowerCase() === 'vpnv4' ? 'Vpnv4 All' : 'Vpnv6 All'
         currentAddressFamily = currentCmdFamily
         headerFound = false
+        inVpnInstanceSection = false
         continue
       }
       if (/^(?:<[^>]+>|\[[^\]]+\])?\s*display\s+/i.test(line)) {
@@ -311,14 +315,25 @@ export function useBgpModule() {
         currentCmdFamily = ''
         headerFound = false
         pendingIpv6 = ''
+        inVpnInstanceSection = false
         continue
       }
 
       // VPN-Instance 分段（display bgp vpnv4/vpnv6 all peer 的实例分组）
       // 注意：不重置 headerFound，表头在分组内仍然有效，后续 IPv6 续行数据需依赖 headerFound=true
-      const vpnMatch = line.match(/^VPN-Instance\s+(\S+)/i)
+      const vpnMatch = line.match(/^VPN-Instance\s+([^,:\s]+)/i)
       if (vpnMatch) {
-        currentAddressFamily = `${currentCmdFamily || ''} ${vpnMatch[1]}`.trim()
+        // 处于 "Peer of IPv4/IPv6-family for vpn instance" 子段内时，类型取实例名（如 ChinaMobile_BOSS）；
+        // 否则沿用命令行地址族前缀（如 "Vpnv4 All ChinaMobile_BOSS"，属于默认 vpn 实例视图）
+        currentAddressFamily = inVpnInstanceSection ? vpnMatch[1] : `${currentCmdFamily || ''} ${vpnMatch[1]}`.trim()
+        pendingIpv6 = ''
+        continue
+      }
+
+      // "Peer of IPv4/IPv6-family for vpn instance" 子段开始（display bgp vpnv4/vpnv6 all peer）
+      // 标记后，其下的 VPN-Instance 对等体类型取实例名（case 2c）
+      if (/^Peer\s+of\s+IPv[46]-family\s+for\s+vpn\s+instance/i.test(line)) {
+        inVpnInstanceSection = true
         pendingIpv6 = ''
         continue
       }

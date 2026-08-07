@@ -6,6 +6,7 @@
         title="点击上传或拖拽配置文件到此处"
         :info="deviceInfoHW"
         :importing="deviceImporting"
+        :file-name="importedFileName"
         @upload="onDeviceImport('huawei')"
         @drop="onDeviceDrop($event, 'huawei')"
       >
@@ -13,22 +14,26 @@
           ref="bgpRef"
           title="BGP 协议" desc="邻居配置信息"
           :list="bgpList" :getDiffInfo="bgpGetDiff"
-          keyField="neighborIp" keyLabel="邻居 IP" :keyWidth="180"
+          keyField="neighborIp" keyLabel="Peer地址" :keyWidth="180"
           stateField="neighborState" :resultWidth="100"
           :columns="[
-            { key: 'remoteAs', label: '邻居 AS', minWidth: 100 },
+            { key: 'remoteAs', label: 'Peer AS', minWidth: 100 },
             { key: 'neighborState', label: '邻居状态', minWidth: 100 },
-            { key: 'description', label: '描述', minWidth: 160 },
-            { key: 'addressFamily', label: '地址族', minWidth: 180 },
-            { key: 'group', label: '对等体组', minWidth: 120 },
+            { key: 'sessionDuration', label: '邻居持续时间', minWidth: 120 },
+            { key: 'description', label: 'Peer描述', minWidth: 140 },
+            { key: 'routesReceived', label: '接收路由统计', minWidth: 105 },
+            { key: 'routesSent', label: '发送路由统计', minWidth: 105 },
+            { key: 'addressType', label: '地址族', minWidth: 70 },
+            { key: 'group', label: 'BGP组', minWidth: 80 },
             { key: 'keepalive', label: 'Keepalive', minWidth: 100 },
             { key: 'hold', label: 'Hold', minWidth: 80 },
             { key: 'substituteAs', label: 'Substitute-AS', minWidth: 110 },
             { key: 'auth', label: '认证', minWidth: 70 },
-            { key: 'ebgpMaxHop', label: 'EBGP跳数', minWidth: 90 },
+            { key: 'ebgpMaxHop', label: 'EBGP跳数', minWidth: 120 },
             { key: 'bfd', label: 'BFD', minWidth: 70 },
             { key: 'routePolicyImport', label: 'Import策略', minWidth: 220 },
-            { key: 'routePolicyExport', label: 'Export策略', minWidth: 220 }
+            { key: 'routePolicyExport', label: 'Export策略', minWidth: 220 },
+            { key: 'remark', label: '备注', minWidth: 160 }
           ]"
           :deviceMode="true" moduleName="bgp" v-model:activeModule="localActive" :filterFocus="filterFocusModule" :boolFields="['substituteAs', 'auth', 'bfd']" :stat="bgpStat" :export-name="importedFileName" @focusFilter="onFocus"
         />
@@ -197,6 +202,7 @@
         title="点击上传或拖拽配置文件到此处"
         :info="deviceInfoAR"
         :importing="deviceImporting"
+        :file-name="importedFileName"
         @upload="onDeviceImport('huawei', 'ar')"
         @drop="onDeviceDrop($event, 'huawei', 'ar')"
       >
@@ -239,6 +245,7 @@
         title="点击上传或拖拽配置文件到此处"
         :info="deviceInfoHW"
         :importing="deviceImporting"
+        :file-name="importedFileName"
         @upload="onDeviceImport('huawei', 'trunk')"
         @drop="onDeviceDrop($event, 'huawei', 'trunk')"
       >
@@ -261,6 +268,7 @@
         title="点击上传或拖拽配置文件到此处"
         :info="deviceInfoH3C"
         :importing="deviceImporting"
+        :file-name="importedFileName"
         @upload="onDeviceImport('h3c')"
         @drop="onDeviceDrop($event, 'h3c')"
       >
@@ -570,7 +578,6 @@ const hwColumns = [
 const deviceNameCol = [{ key: 'deviceName', label: '设备名', minWidth: 200 }]
 
 const arColumns = [
-  { key: 'interfaceName', label: '接口', minWidth: 140 },
   { key: 'ethTrunk', label: '聚合口', minWidth: 110 },
   { key: 'portStatus', label: '物理状态', minWidth: 80 },
   { key: 'protoStatus', label: '协议状态', minWidth: 80 },
@@ -592,15 +599,14 @@ const arColumns = [
   { key: 'crc', label: 'CRC统计', minWidth: 60 }
 ]
 
-// 聚合口(解析)列定义（从左到右：设备名(前导)/聚合口状态/聚合口/VRF/IPv4地址/IPv6地址/聚合口成员信息/物理口状态/聚合口描述）
+// 聚合口(解析)列定义（从左到右：设备名(前导)/聚合口/聚合口状态/聚合口成员信息/物理口状态/VRF/IPv4地址/IPv6地址/聚合口描述）
 const trunkColumns = [
   { key: 'trunkStatus', label: '聚合口状态', minWidth: 100 },
-  { key: 'interfaceName', label: '聚合口', minWidth: 110 },
+  { key: 'members', label: '聚合口成员信息', minWidth: 260 },
+  { key: 'portStatus', label: '物理口状态', minWidth: 120 },
   { key: 'vrf', label: 'VRF', minWidth: 100 },
   { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
   { key: 'ipv6', label: 'IPv6地址', minWidth: 190 },
-  { key: 'members', label: '聚合口成员信息', minWidth: 260 },
-  { key: 'portStatus', label: '物理口状态', minWidth: 120 },
   { key: 'description', label: '聚合口描述', minWidth: 220 }
 ]
 
@@ -628,22 +634,26 @@ const { registerExportAll, setExportHasData, unregisterExportAll } = useExportAl
 
 // 配置解析各模块列定义（导出共用；与模板内联列保持一致）
 const PARSE_MODULE_DEFS = {
-  bgp: { title: 'BGP 协议', keyField: 'neighborIp', keyLabel: '邻居 IP', boolFields: ['substituteAs', 'auth', 'bfd'], columns: [
-    { key: 'remoteAs', label: '邻居 AS', minWidth: 100 },
+  bgp: { title: 'BGP 协议', keyField: 'neighborIp', keyLabel: 'Peer地址', boolFields: ['substituteAs', 'auth', 'bfd'], moduleKey: 'bgp', columns: [
+    { key: 'remoteAs', label: 'Peer AS', minWidth: 100 },
     { key: 'neighborState', label: '邻居状态', minWidth: 100 },
-    { key: 'description', label: '描述', minWidth: 160 },
-    { key: 'addressFamily', label: '地址族', minWidth: 180 },
-    { key: 'group', label: '对等体组', minWidth: 120 },
+    { key: 'sessionDuration', label: '邻居持续时间', minWidth: 120 },
+    { key: 'description', label: 'Peer描述', minWidth: 140 },
+    { key: 'routesReceived', label: '接收路由统计', minWidth: 105 },
+    { key: 'routesSent', label: '发送路由统计', minWidth: 105 },
+    { key: 'addressType', label: '地址族', minWidth: 70 },
+    { key: 'group', label: 'BGP组', minWidth: 80 },
     { key: 'keepalive', label: 'Keepalive', minWidth: 100 },
     { key: 'hold', label: 'Hold', minWidth: 80 },
     { key: 'substituteAs', label: 'Substitute-AS', minWidth: 110 },
     { key: 'auth', label: '认证', minWidth: 70 },
-    { key: 'ebgpMaxHop', label: 'EBGP跳数', minWidth: 90 },
+    { key: 'ebgpMaxHop', label: 'EBGP跳数', minWidth: 120 },
     { key: 'bfd', label: 'BFD', minWidth: 70 },
     { key: 'routePolicyImport', label: 'Import策略', minWidth: 220 },
-    { key: 'routePolicyExport', label: 'Export策略', minWidth: 220 }
+    { key: 'routePolicyExport', label: 'Export策略', minWidth: 220 },
+    { key: 'remark', label: '备注', minWidth: 160 }
   ] },
-  ospf: { title: 'OSPF 协议', keyField: 'interface', keyLabel: '接口', boolFields: ['auth'], columns: [
+  ospf: { title: 'OSPF 协议', keyField: 'interface', keyLabel: '接口', boolFields: ['auth'], moduleKey: 'ospf', columns: [
     { key: 'addressFamily', label: '协议版本', minWidth: 90 },
     { key: 'processId', label: '进程', minWidth: 80 },
     { key: 'vpnInstance', label: 'VPN实例', minWidth: 180 },
@@ -724,29 +734,31 @@ const PARSE_MODULE_DEFS = {
 // 注：路由协议与接口信息分属不同解析页，但数据都落在同一 collectScope 单例，故可跨页合并
 const parseModulesForExport = computed(() => {
   const list = [
-    { def: PARSE_MODULE_DEFS.bgp, list: bgpList, getDiffInfo: bgpGetDiff },
-    { def: PARSE_MODULE_DEFS.ospf, list: ospfList, getDiffInfo: ospfGetDiff },
-    { def: PARSE_MODULE_DEFS.isis, list: isisList, getDiffInfo: isisGetDiff },
-    { def: PARSE_MODULE_DEFS.ldp, list: ldpList, getDiffInfo: ldpGetDiff },
-    { def: PARSE_MODULE_DEFS.ldpPeer, list: ldpPeerList, getDiffInfo: ldpPeerGetDiff },
-    { def: PARSE_MODULE_DEFS.lldp, list: lldpList, getDiffInfo: lldpGetDiff },
-    { def: PARSE_MODULE_DEFS.srv6, list: srv6List, getDiffInfo: srv6GetDiff },
-    { def: PARSE_MODULE_DEFS.srv6TePolicy, list: srv6TePolicyList, getDiffInfo: srv6TePolicyGetDiff },
-    { def: PARSE_MODULE_DEFS.arp, list: arpList, getDiffInfo: arpGetDiff },
-    { def: PARSE_MODULE_DEFS.ipv6neigh, list: ipv6neighList, getDiffInfo: ipv6neighGetDiff },
-    { def: { title: '接口信息', keyField: 'interfaceName', keyLabel: '接口', boolFields: [], columns: [...deviceNameCol, ...arColumns] }, list: ifaceList, getDiffInfo: ifaceGetDiff },
-    { def: { title: '聚合口', keyField: 'interfaceName', keyLabel: '聚合口', boolFields: [], columns: [...deviceNameCol, ...trunkColumns] }, list: trunkList, getDiffInfo: noDiff },
-    { def: { title: 'VRF', keyField: 'vrfName', keyLabel: 'VRF名称', boolFields: [], columns: vrfColumns }, list: vrfList, getDiffInfo: noDiff },
-    { def: { title: 'IPV4路由表', keyField: 'proto', keyLabel: '协议类别', boolFields: [], columns: routingCols }, list: routingList, getDiffInfo: routingGetDiff }
+    { def: PARSE_MODULE_DEFS.bgp, list: bgpList, getDiffInfo: bgpGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.ospf, list: ospfList, getDiffInfo: ospfGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.isis, list: isisList, getDiffInfo: isisGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.ldp, list: ldpList, getDiffInfo: ldpGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.ldpPeer, list: ldpPeerList, getDiffInfo: ldpPeerGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.lldp, list: lldpList, getDiffInfo: lldpGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.srv6, list: srv6List, getDiffInfo: srv6GetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.srv6TePolicy, list: srv6TePolicyList, getDiffInfo: srv6TePolicyGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.arp, list: arpList, getDiffInfo: arpGetDiff, withDescription: false },
+    { def: PARSE_MODULE_DEFS.ipv6neigh, list: ipv6neighList, getDiffInfo: ipv6neighGetDiff, withDescription: false },
+    { def: { title: '接口信息', keyField: 'interfaceName', keyLabel: '接口', leadColumns: deviceNameCol, boolFields: [], columns: arColumns }, list: ifaceList, getDiffInfo: ifaceGetDiff, withDescription: true },
+    { def: { title: '聚合口', keyField: 'interfaceName', keyLabel: '聚合口', leadColumns: deviceNameCol, boolFields: [], columns: trunkColumns }, list: trunkList, getDiffInfo: noDiff, withDescription: false },
+    { def: { title: 'IPV4路由表', keyField: 'proto', keyLabel: '协议类别', boolFields: [], columns: routingCols }, list: routingList, getDiffInfo: routingGetDiff, withDescription: false }
   ]
   return list.map(m => ({
     title: m.def.title,
     list: m.list,
     getDiffInfo: m.getDiffInfo,
+    leadColumns: m.def.leadColumns,
     keyField: m.def.keyField,
     keyLabel: m.def.keyLabel,
     columns: m.def.columns,
-    boolFields: m.def.boolFields
+    boolFields: m.def.boolFields,
+    withDescription: m.withDescription,
+    moduleKey: m.def.moduleKey
   }))
 })
 

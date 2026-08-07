@@ -332,7 +332,8 @@ const tagType = (val) => {
     return 'danger'
   }
   if (v === 'established' || v === 'up' || v === 'operational') return 'success'
-  if (v === 'idle' || v === 'down') return 'warning'
+  if (v === 'idle') return 'info'
+  if (v === 'down') return 'warning'
   if (['active', 'connect', 'opensent', 'openconfirm'].includes(v)) return 'warning'
   // ARP 类型：S=静态(绿) / I=接口ARP(黄) / D*/动态(中性)
   if (['s', 'static'].includes(v)) return 'success'

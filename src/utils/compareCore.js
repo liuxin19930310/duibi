@@ -153,26 +153,25 @@ export function runComparePure(beforeText, afterText, options = {}) {
   // ---- 1. BGP ----
   const bgpBefore = mergeBgpPeers(parseBgpSummary(beforeText), parseBgpVpnPeerSummary(beforeText))
   const bgpAfter = mergeBgpPeers(parseBgpSummary(afterText), parseBgpVpnPeerSummary(afterText))
-  // verbose 数据用于补充 routesSent（Advertised total routes）
-  const beforeVerbose = parseBgpVpnPeerVerboseLog(beforeText)
-  const afterVerbose = parseBgpVpnPeerVerboseLog(afterText)
-  // 将 verbose 的 routesSent 合入 peer 列表（优先用 Advertised total routes）
-  const mergeVerboseIntoPeers = (peers, verboseMap) => {
+  // 接收/发送路由统计分两种情况（前后两份配置各自判断）：
+  //   ① 支持 display bgp all summary → RtRcv / RtAdv
+  //   ② 不支持 → display bgp vpnv4/vpnv6 all peer verbose 的 Received/Advertised total routes
+  const beforeHasSummary = /display\s+bgp\s+(?:vpnv[46]\s+)?all\s+summary\b/i.test(beforeText)
+  const afterHasSummary = /display\s+bgp\s+(?:vpnv[46]\s+)?all\s+summary\b/i.test(afterText)
+  const buildVerboseByIp = (m) => { const o = {}; for (const k in m) { const ip = k.split('|')[0]; if (!o[ip]) o[ip] = m[k] } return o }
+  const beforeVerboseByIp = buildVerboseByIp(parseBgpVpnPeerVerboseLog(beforeText))
+  const afterVerboseByIp = buildVerboseByIp(parseBgpVpnPeerVerboseLog(afterText))
+  const mergeRouteStats = (peers, verboseByIp, hasSummary) => {
     peers.forEach(p => {
-      const vKey = `${p.neighborIp}|${p.protocolFamily}|${p.addressFamily || '-'}`
-      const vData = verboseMap[vKey]
-      if (vData) {
-        if (vData.routesSent !== undefined && vData.routesSent !== 0) {
-          p.routesSent = vData.routesSent
-        }
-        if (vData.routesReceivedVerbose !== undefined && (p.routesReceived === 0 || p.routesReceived === null)) {
-          p.routesReceived = vData.routesReceivedVerbose
-        }
-      }
+      const status = { routesReceived: p.routesReceived, routesSent: p.routesSent }
+      const vData = verboseByIp[p.neighborIp]
+      const routes = resolveBgpRoutes(status, vData, hasSummary)
+      p.routesReceived = routes.routesReceived
+      p.routesSent = routes.routesSent
     })
   }
-  mergeVerboseIntoPeers(bgpBefore, beforeVerbose)
-  mergeVerboseIntoPeers(bgpAfter, afterVerbose)
+  mergeRouteStats(bgpBefore, beforeVerboseByIp, beforeHasSummary)
+  mergeRouteStats(bgpAfter, afterVerboseByIp, afterHasSummary)
   const bgpFinal = []
   const bgpAfterMap = new Map(); bgpAfter.forEach(item => { bgpAfterMap.set(`${item.neighborIp}|${item.protocolFamily}|${item.addressFamily || '-'}`, item) })
   for (const beforeItem of bgpBefore) {
@@ -581,6 +580,34 @@ export function runComparePure(beforeText, afterText, options = {}) {
     }
   }
 
+  // ---- 6.5 OSPF 邻接 ----
+  const ospfBefore = mergeOspfPeerToTable(parseOspfPeerLog(beforeText))
+  const ospfAfter = mergeOspfPeerToTable(parseOspfPeerLog(afterText))
+  const ospfFinal = []
+  const ospfAfterMap = new Map()
+  ospfAfter.forEach(item => { ospfAfterMap.set(item._key, item) })
+  const ospfCompareFields = ['neighborState', 'areaId', 'cost', 'auth', 'networkType', 'vpnInstance']
+  for (const beforeItem of ospfBefore) {
+    const afterItem = ospfAfterMap.get(beforeItem._key)
+    if (afterItem) {
+      const diffFields = []
+      ospfCompareFields.forEach(f => {
+        if (normVal(beforeItem[f]) !== normVal(afterItem[f])) diffFields.push({ field: f, beforeVal: String(beforeItem[f] != null ? beforeItem[f] : '-'), afterVal: String(afterItem[f] != null ? afterItem[f] : '-') })
+      })
+      ospfFinal.push({ ...afterItem, isConsistent: diffFields.length === 0, configDiffFields: diffFields })
+      ospfAfterMap.delete(beforeItem._key)
+    } else {
+      const diffFields = []
+      ospfCompareFields.forEach(f => { const bVal = beforeItem[f]; if (bVal != null && String(bVal) !== '') diffFields.push({ field: f, beforeVal: String(bVal), afterVal: '-' }) })
+      ospfFinal.push({ ...beforeItem, neighborState: '已失效', isConsistent: false, configDiffFields: diffFields })
+    }
+  }
+  for (const [, afterItem] of ospfAfterMap) {
+    const diffFields = []
+    ospfCompareFields.forEach(f => { const aVal = afterItem[f]; if (aVal != null && String(aVal) !== '') diffFields.push({ field: f, beforeVal: '-', afterVal: String(aVal) }) })
+    ospfFinal.push({ ...afterItem, neighborState: '新增邻居', isConsistent: false, configDiffFields: diffFields })
+  }
+
   // ---- 7. 返回纯结果（由调用方写回响应式 store） ----
   return {
     bgp: bgpFinal,
@@ -592,6 +619,7 @@ export function runComparePure(beforeText, afterText, options = {}) {
     interface: interfaceFinal,
     routingStat: routingStatFinal,
     lldp: lldpFinal,
+    ospf: ospfFinal,
     counts: {
       bgpCount: bgpFinal.length,
       isisCount: isisFinal.length,
@@ -601,7 +629,8 @@ export function runComparePure(beforeText, afterText, options = {}) {
       srv6TePolicyCount: teFinal.length,
       interfaceCount: interfaceFinal.length,
       routingStatCount: routingStatFinal.length,
-      lldpCount: lldpFinal.length
+      lldpCount: lldpFinal.length,
+      ospfCount: ospfFinal.length
     }
   }
 }
@@ -611,15 +640,19 @@ export function runComparePure(beforeText, afterText, options = {}) {
 /** 单文件导入：只解析提取数据到表格，不做对比 */
 export function loadSinglePure(text) {
   const bgp = mergeBgpPeers(parseBgpSummary(text), parseBgpVpnPeerSummary(text)).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
-  // 将 verbose 的 routesSent（Advertised total routes）合入
-  const verboseMap = parseBgpVpnPeerVerboseLog(text)
+  // 接收/发送路由统计：① 支持 display bgp all summary → RtRcv/RtAdv；② 否则用 verbose Received/Advertised total routes
+  // 判定「支持 display bgp all summary」必须以真实产出的表头为准（含 RtRcv / RtAdv 列），
+  // 不能只匹配命令字符串——设备不支持时命令会回显 Error，但字符串仍在，会误判为情况①。
+  const hasBgpSummary = /RtRcv\s+RtAdv/i.test(text)
+  const bgpVerboseMap = parseBgpVpnPeerVerboseLog(text)
+  const bgpVerboseByIp = {}
+  for (const k in bgpVerboseMap) { const ip = k.split('|')[0]; if (!bgpVerboseByIp[ip]) bgpVerboseByIp[ip] = bgpVerboseMap[k] }
   bgp.forEach(p => {
-    const vKey = `${p.neighborIp}|${p.protocolFamily}|${p.addressFamily || '-'}`
-    const vData = verboseMap[vKey]
-    if (vData) {
-      if (vData.routesSent !== undefined && vData.routesSent !== 0) p.routesSent = vData.routesSent
-      if (vData.routesReceivedVerbose !== undefined && (p.routesReceived === 0 || p.routesReceived === null)) p.routesReceived = vData.routesReceivedVerbose
-    }
+    const status = { routesReceived: p.routesReceived, routesSent: p.routesSent }
+    const vData = bgpVerboseByIp[p.neighborIp]
+    const routes = resolveBgpRoutes(status, vData, hasBgpSummary)
+    p.routesReceived = routes.routesReceived
+    p.routesSent = routes.routesSent
   })
   const isis = parseIsisSummary(text).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
   const ldp = parseLdpSummary(text).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
@@ -629,6 +662,7 @@ export function loadSinglePure(text) {
   const iface = parseInterfaceSummary(text).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
   const routingStat = parseRoutingStatSummary(text).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
   const lldp = parseLldpNeighborBrief(text).map(i => ({ ...i, configDiffFields: [], isConsistent: null }))
+  const ospf = mergeOspfPeerToTable(parseOspfPeerLog(text))
   const ifaceBrief = parseInterfaceBrief(text)
   const normIfLocal = n => n.replace(/^\*+/, '').replace(/\s*\([^)]*\)\s*$/i, '')
   iface.forEach(i => { const bk = ifaceBrief[i.interfaceName] ? i.interfaceName : (ifaceBrief[normIfLocal(i.interfaceName)] ? normIfLocal(i.interfaceName) : null); if (bk) { const bv = ifaceBrief[bk]; if (bv) { i.inUti = bv.inUti || '-'; i.outUti = bv.outUti || '-' } } })
@@ -643,6 +677,7 @@ export function loadSinglePure(text) {
     interface: iface,
     routingStat,
     lldp,
+    ospf,
     counts: {
       bgpCount: bgp.length,
       isisCount: isis.length,
@@ -652,48 +687,140 @@ export function loadSinglePure(text) {
       srv6TePolicyCount: srv6TePolicy.length,
       interfaceCount: iface.length,
       routingStatCount: routingStat.length,
-      lldpCount: lldp.length
+      lldpCount: lldp.length,
+      ospfCount: ospf.length
     }
   }
+}
+
+/**
+ * 解析 BGP 接收/发送路由统计的取值来源（分两种情况）：
+ *  ① 支持 `display bgp all summary` → 接收取 RtRcv，发送取 RtAdv
+ *  ② 不支持 all summary（改用 `display bgp vpnv4/vpnv6 all peer verbose`）
+ *     → 接收取 "Received total routes:"，发送取 "Advertised total routes:"
+ * hasBgpSummary 为真时优先用 summary；任意来源缺失（空/0）时回退到另一来源。
+ */
+function resolveBgpRoutes(status, vData, hasBgpSummary) {
+  const sRecv = status ? status.routesReceived : null
+  const sSent = status ? status.routesSent : null
+  const vRecv = (vData && vData.routesReceivedVerbose != null) ? vData.routesReceivedVerbose : null
+  const vSent = (vData && vData.routesSent != null) ? vData.routesSent : null
+  const missing = v => v === null || v === '' || v === 0
+  let recv, sent
+  if (hasBgpSummary) {
+    recv = missing(sRecv) ? vRecv : sRecv
+    sent = missing(sSent) ? vSent : sSent
+  } else {
+    recv = missing(vRecv) ? sRecv : vRecv
+    sent = missing(vSent) ? sSent : vSent
+  }
+  return { routesReceived: recv, routesSent: sent }
 }
 
 export function parseDeviceProtocolsPure(text, vendor, subtype) {
   const deviceInfo = parseDeviceInfo(text, vendor)
 
-  // ---- BGP ----（原 DevicePage.loadDeviceProtocols 逻辑）
+  // ---- BGP ----（接收/发送路由统计分两种情况：
+  //   ① 支持 display bgp all summary → 取 RtRcv / RtAdv
+  //   ② 不支持 all summary → 取 display bgp vpnv4/vpnv6 all peer verbose 的 Received/Advertised total routes）
+  // 判定「支持 display bgp all summary」必须以真实产出的表头为准（含 RtRcv / RtAdv 列），
+  // 不能只匹配命令字符串——设备不支持时命令会回显 Error，但字符串仍在，会误判为情况①。
+  const hasBgpSummary = /RtRcv\s+RtAdv/i.test(text)
+  const vpnVerboseMap = parseBgpVpnPeerVerboseLog(text)
+  const verboseByIp = {}
+  for (const k in vpnVerboseMap) {
+    const ip = k.split('|')[0]
+    if (!verboseByIp[ip]) verboseByIp[ip] = vpnVerboseMap[k]
+  }
   let bgp = []
   if (/^bgp\s+\d+/im.test(text)) {
     const configMap = parseBgpConfigNeighbors(text)
     const statusMap = parseBgpStatusLog(text)
-    const statusByIp = {}
-    for (const k in statusMap) {
-      const ip = k.split('|')[0]
-      if (!statusByIp[ip]) statusByIp[ip] = statusMap[k]
-    }
-    bgp = Object.values(configMap).map(item => {
-      const status = statusMap[`${item.neighborIp}|${item.addressFamily}`] || statusByIp[item.neighborIp]
+    // 以 status 的每个 (ip|addressFamily) 邻接为基准生成行，
+    // 确保同一邻居在 vpnv4/vpnv6/各 vpn 实例下各自成行（如 221.130.208.65 既出 "Vpnv4 All" 也出 "Vpnv6 All"）。
+    // 注意：221.130.208.64 是本机 BGP router-id（LoopBack0 地址），不是邻居，解析器不应将其作为 Peer 抓取。
+    const mergeBgpRow = (cfg, status, routes) => {
+      const base = cfg ? { ...cfg } : {}
+      const statusAf = status ? (status.addressFamily || '') : ''
+      const pick = (field) => (status && status[field] != null ? status[field] : base[field])
       return {
-        ...item,
-        neighborState: status ? status.sessionState : '',
+        ...base,
+        neighborIp: status ? status.neighborIp : base.neighborIp,
+        remoteAs: (status && status.remoteAs) || base.remoteAs || '',
+        description: base.description || '',
+        group: base.group || '',
+        // 类型(addressType) 按情况取值：
+        //  ① 支持 display bgp all summary → status.addressFamily = "Address Family:" 的值（如 Ipv4 Unicast）
+        //  ② 不支持 → status.addressFamily = "Vpnv4 All"/"Vpnv6 All"，或其下 "Peer of IPv4/IPv6-family for vpn instance" 子段的实例名
+        addressType: statusAf || base.addressType || '',
+        addressFamily: statusAf || (Array.isArray(base.addressFamily) ? base.addressFamily.join(',') : (base.addressFamily || '')),
+        sessionType: base.sessionType || '',
+        keepalive: base.keepalive || '',
+        hold: base.hold || '',
+        substituteAs: !!pick('substituteAs'),
+        auth: !!pick('auth'),
+        ebgpMaxHop: base.ebgpMaxHop || '',
+        bfd: !!pick('bfd'),
+        routePolicyImport: base.routePolicyImport || '',
+        routePolicyExport: base.routePolicyExport || '',
+        localInterface: base.localInterface || '',
+        neighborState: status ? status.sessionState : (base.neighborState || ''),
+        sessionState: status ? status.sessionState : (base.sessionState || ''),
         sessionDuration: status ? status.sessionDuration : '',
-        routesReceived: status ? status.routesReceived : null,
-        routesSent: status ? status.routesSent : null,
+        routesReceived: routes.routesReceived,
+        routesSent: routes.routesSent,
         configDiffFields: [],
         isConsistent: null
       }
-    })
+    }
+    bgp = []
+    const coveredIps = new Set()
+    for (const key of Object.keys(statusMap)) {
+      const status = statusMap[key]
+      const ip = status.neighborIp
+      coveredIps.add(ip)
+      const cfg = configMap[ip.toLowerCase()]
+      const vData = verboseByIp[ip]
+      const routes = resolveBgpRoutes(status, vData, hasBgpSummary)
+      bgp.push(mergeBgpRow(cfg, status, routes))
+    }
+    // 补充：配置中存在但状态命令未输出的邻居（极少：纯配置、会话未建立）
+    for (const ipKey of Object.keys(configMap)) {
+      const cfg = configMap[ipKey]
+      if (!coveredIps.has(cfg.neighborIp)) {
+        bgp.push(mergeBgpRow(cfg, null, { routesReceived: null, routesSent: null }))
+      }
+    }
   } else {
     const vpnPeers = Object.values(parseBgpVpnPeerLog(text)).map(item => ({ ...item, group: '-', neighborState: item.sessionState || '' }))
     bgp = mergeBgpPeers(parseBgpSummary(text), vpnPeers).map(i => ({ ...i, neighborState: i.neighborState || i.sessionState || '', configDiffFields: [], isConsistent: null }))
-    const verboseMap = parseBgpVpnPeerVerboseLog(text)
     bgp.forEach(p => {
-      const vKey = `${p.neighborIp}|${p.protocolFamily}|${p.addressFamily || '-'}`
-      const vData = verboseMap[vKey]
-      if (vData) {
-        if (vData.routesSent !== undefined && vData.routesSent !== 0) p.routesSent = vData.routesSent
-        if (vData.routesReceivedVerbose !== undefined && (p.routesReceived === 0 || p.routesReceived === null)) p.routesReceived = vData.routesReceivedVerbose
-      }
+      const status = { routesReceived: p.routesReceived, routesSent: p.routesSent }
+      const vData = verboseByIp[p.neighborIp]
+      const routes = resolveBgpRoutes(status, vData, hasBgpSummary)
+      p.routesReceived = routes.routesReceived
+      p.routesSent = routes.routesSent
     })
+  }
+
+  // BGP 邻居状态统计摘要，写入每条邻居的 备注(remark) 列（页面「备注」与一键导出均可见）
+  if (bgp.length) {
+    const stateCounts = {}
+    bgp.forEach(p => {
+      const s = String(p.neighborState || '').trim()
+      if (s) stateCounts[s] = (stateCounts[s] || 0) + 1
+    })
+    // 固定顺序优先展示常见状态，其余按出现顺序补充
+    const stateOrder = ['Established', 'Connect', 'Active', 'Idle', 'OpenSent', 'OpenConfirm']
+    const stateParts = []
+    for (const s of stateOrder) {
+      if (stateCounts[s]) stateParts.push(`${s}：${stateCounts[s]}`)
+    }
+    Object.keys(stateCounts).forEach(s => {
+      if (!stateOrder.includes(s)) stateParts.push(`${s}：${stateCounts[s]}`)
+    })
+    const remarkSummary = `邻居总数：${bgp.length}` + (stateParts.length ? ' ' + stateParts.join(' ') : '')
+    bgp.forEach((p, idx) => { p.remark = idx === 0 ? remarkSummary : '' })
   }
 
   const ospf = mergeOspfPeerToTable(parseOspfPeerLog(text))
