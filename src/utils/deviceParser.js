@@ -523,7 +523,7 @@ function parseEthTrunks(text) {
   if (!text) return result
   const sysname = (text.match(/\bsysname\s+(\S+)/i) || [])[1] || ''
   const seen = new Set()
-  const blockRegex = /^interface\s+(Eth-Trunk\d+)\s*$/gim
+  const blockRegex = /^interface\s+(Eth-Trunk\d+(?:\.\d+)?)\s*$/gim
   let m
   while ((m = blockRegex.exec(text)) !== null) {
     const name = m[1]
@@ -532,7 +532,7 @@ function parseEthTrunks(text) {
     const rest = text.slice(m.index + m[0].length)
     const bm = rest.match(/^(\s[\s\S]*?)(?=\n\S|\n#$)/) || rest.match(/^(\s[\s\S]*)$/)
     const block = bm ? bm[1] : ''
-    const row = { interfaceName: name, deviceName: sysname, description: '-', mtu: '-', ipv4: '-', ipv6: '-', isisCost: '-', trunkStatus: '-', portStatus: '-', protoStatus: '-', inUti: '-', outUti: '-', members: '-' }
+    const row = { interfaceName: name, deviceName: sysname, description: '-', mtu: '-', ipv4: '-', ipv6: '-', vrf: '-', isisCost: '-', trunkStatus: '-', portStatus: '-', protoStatus: '-', inUti: '-', outUti: '-', members: '-' }
     const desc = block.match(/description\s+(.+)/i)
     if (desc) row.description = desc[1].trim()
     const mtu = block.match(/^\s*mtu\s+(\d+)\s*$/im)
@@ -541,6 +541,8 @@ function parseEthTrunks(text) {
     if (ip4 && ip4[1] !== 'unnumbered') row.ipv4 = ip4[1] + '/' + netmaskToCidr(ip4[2])
     const ip6 = block.match(/ipv6\s+address\s+(\S+)/i)
     if (ip6) row.ipv6 = ip6[1]
+    const vrf = block.match(/ip\s+binding\s+vpn-instance\s+(\S+)/i) || block.match(/binding\s+vpn-instance\s+(\S+)/i)
+    if (vrf) row.vrf = vrf[1]
     const isisV4 = block.match(/^\s*isis\s+cost\s+(\d+)/im)
     const isisV6 = block.match(/^\s*isis\s+ipv6\s+cost\s+(\d+)/im)
     if (isisV4 || isisV6) row.isisCost = isisCostDisplay({ v4: isisV4 ? isisV4[1] : null, v6: isisV6 ? isisV6[1] : null })
@@ -884,6 +886,87 @@ function parseConfigForVrf(configText) {
   return vrfMap
 }
 
+// ===================== 解析 VRF 实例 =====================
+
+/**
+ * 从配置文本中解析所有 ip vpn-instance 实例，返回 [{ vrfName, rd, exportTargets, importTargets, interfaces }]。
+ * 同时扫描接口下的 binding vpn-instance 补充 interfaces 关联。
+ */
+function parseVrfInstances(configText) {
+  const rows = []
+  if (!configText) return rows
+  const lines = configText.split('\n')
+  const vrfMap = {} // vrfName -> { rd, exportTargets, importTargets, interfaces: Set }
+
+  let inVrfBlock = false
+  let currentVrf = null
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // 进入 vpn-instance 块
+    const vrfStart = trimmed.match(/^ip\s+vpn-instance\s+(\S+)/i)
+    if (vrfStart) {
+      currentVrf = vrfStart[1]
+      inVrfBlock = true
+      if (!vrfMap[currentVrf]) vrfMap[currentVrf] = { rd: '', exportTargets: [], importTargets: [], interfaces: new Set() }
+      continue
+    }
+
+    // 块结束标记
+    if (inVrfBlock && (/^#/.test(trimmed) || /^interface\s+/i.test(trimmed) || /^return/i.test(trimmed))) {
+      inVrfBlock = false
+      currentVrf = null
+      continue
+    }
+
+    // 块内字段
+    if (inVrfBlock && currentVrf) {
+      const rdMatch = trimmed.match(/^route-distinguisher\s+(\S+)/i)
+      if (rdMatch) { vrfMap[currentVrf].rd = rdMatch[1]; continue }
+      const rtExport = trimmed.match(/^vpn-target\s+(\S+)\s+export-extcommunity/i)
+      if (rtExport) { vrfMap[currentVrf].exportTargets.push(rtExport[1]); continue }
+      const rtImport = trimmed.match(/^vpn-target\s+(\S+)\s+import-extcommunity/i)
+      if (rtImport) { vrfMap[currentVrf].importTargets.push(rtImport[1]); continue }
+      // 兼容 vpn-target x:x both（同时 import+export）
+      const rtBoth = trimmed.match(/^vpn-target\s+(\S+)\s+(both|extcommunity)/i)
+      if (rtBoth) {
+        vrfMap[currentVrf].exportTargets.push(rtBoth[1])
+        vrfMap[currentVrf].importTargets.push(rtBoth[1])
+        continue
+      }
+    }
+
+    // 接口绑定 VRF（补充 interfaces）
+    const bindMatch = trimmed.match(/^(?:ip\s+)?binding\s+vpn-instance\s+(\S+)/i)
+    if (bindMatch) {
+      const vrfName = bindMatch[1]
+      if (!vrfMap[vrfName]) vrfMap[vrfName] = { rd: '', exportTargets: [], importTargets: [], interfaces: new Set() }
+      // 需要追踪当前接口名——这里用简化方式：后续 merge 阶段从接口表补
+    }
+  }
+
+  // 从接口级 VRF 绑定补充 interfaces（复用 parseConfigForVrf 的反向映射）
+  const ifaceVrfMap = parseConfigForVrf(configText) // { interfaceName: vrfName }
+  for (const [ifaceName, vrfName] of Object.entries(ifaceVrfMap)) {
+    if (!vrfMap[vrfName]) vrfMap[vrfName] = { rd: '', exportTargets: [], importTargets: [], interfaces: new Set() }
+    vrfMap[vrfName].interfaces.add(ifaceName)
+  }
+
+  // 转为数组
+  for (const [vrfName, info] of Object.entries(vrfMap)) {
+    rows.push({
+      vrfName,
+      rd: info.rd || '—',
+      exportTargets: info.exportTargets.length ? info.exportTargets.join(', ') : '—',
+      importTargets: info.importTargets.length ? info.importTargets.join(', ') : '—',
+      interfaces: info.interfaces.size ? [...info.interfaces].join(', ') : '—'
+    })
+  }
+
+  return rows
+}
+
 // ===================== 导出 =====================
 
 export {
@@ -898,4 +981,5 @@ export {
   parseConfigForEthTrunkMembers,
   parseEthTrunks,
   parseConfigForVrf,
+  parseVrfInstances,
 }

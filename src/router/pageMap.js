@@ -9,7 +9,6 @@ export const PAGE_PATHS = {
   'device-huawei-ar': '/device/huawei-ar',
   'device-huawei-trunk': '/device/huawei-trunk',
   'device-h3c': '/device/h3c',
-  'device-global': '/device/global',
   'text-diff': '/text-diff',
   'cutover-check': '/cutover-check',
   'srv6-te-multi': '/srv6-te-multi',

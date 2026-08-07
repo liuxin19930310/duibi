@@ -16,7 +16,6 @@ export const routes = [
   { path: '/device/huawei-ar', name: 'device-huawei-ar', component: () => import('../views/DevicePage.vue'), meta: { title: '华为 · 接口信息', pageKey: 'device-huawei-ar', keepAlive: true, componentName: 'DevicePage' } },
   { path: '/device/huawei-trunk', name: 'device-huawei-trunk', component: () => import('../views/DevicePage.vue'), meta: { title: '华为 · 聚合口(解析)', pageKey: 'device-huawei-trunk', keepAlive: true, componentName: 'DevicePage' } },
   { path: '/device/h3c', name: 'device-h3c', component: () => import('../views/DevicePage.vue'), meta: { title: '华三 · 接口信息', pageKey: 'device-h3c', keepAlive: true, componentName: 'DevicePage' } },
-  { path: '/device/global', name: 'device-global', component: () => import('../views/DevicePage.vue'), meta: { title: '全局配置(解析)', pageKey: 'device-global', keepAlive: true, componentName: 'DevicePage' } },
 
   { path: '/text-diff', name: 'text-diff', component: () => import('../views/TextDiffPage.vue'), meta: { title: '文本逐行对比', pageKey: 'text-diff', keepAlive: true, componentName: 'TextDiffPage' } },
   { path: '/cutover-check', name: 'cutover-check', component: () => import('../views/CutoverCheckPage.vue'), meta: { title: '割接迁移核查', pageKey: 'cutover-check', keepAlive: true, componentName: 'CutoverCheckPage' } },

@@ -59,9 +59,10 @@ const isDownVal = (v) => {
 // 单个模块 → 追加「标题行 + 表头行 + 数据行」到 aoa/meta
 // withConsistent=true 时多一列「对比结果」（配置对比用，含红/绿底标注）；false 时用于配置解析（单设备、无对比）
 function pushModuleRows(aoa, meta, m, { withConsistent }) {
+  const hasKeyInCols = (m.columns || []).some(c => c.key === m.keyField)
   const allCols = [
-    { key: m.keyField, label: m.keyLabel },
     ...m.columns,
+    ...(hasKeyInCols ? [] : [{ key: m.keyField, label: m.keyLabel }]),
     { key: 'description', label: '描述' }
   ]
   if (withConsistent) allCols.push({ key: 'isConsistent', label: '对比结果' })

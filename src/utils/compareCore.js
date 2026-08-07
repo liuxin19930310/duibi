@@ -2,7 +2,7 @@
 // compare.js 只负责：调度 Worker（或主线程回退）→ 把结果写回响应式 store。
 
 // src/utils/compare.js
-import { parseConfigForEthTrunkMembers, parseEthTrunks } from './deviceParser.js'
+import { parseConfigForEthTrunkMembers, parseEthTrunks, parseVrfInstances } from './deviceParser.js'
 import { useBgpModule } from './bgp.js'
 import { useIsisModule } from './isis.js'
 import { useLdpModule } from './ldp.js'
@@ -657,77 +657,6 @@ export function loadSinglePure(text) {
   }
 }
 
-/**
- * 解析设备全局配置（非接口部分）：系统信息 + 管理服务 + 协议/资源统计。
- * 返回 [{ item, value }]，item 为中文标签，value 为解析值（未配置/未解析用 —）。
- */
-export function parseGlobalConfig (text, vendor = '') {
-  const rows = []
-  const add = (item, value) => rows.push({ item, value })
-  const t = String(text || '')
-  let m
-
-  // ===== 系统信息 =====
-  const sys = t.match(/sysname\s+(\S+)/i)
-  add('系统名称', sys ? sys[1] : '—')
-  const model = vendor === 'h3c' ? t.match(/H3C\s+([\w\-]+)/i) : t.match(/HUAWEI\s+([\w\-]+)/i)
-  add('设备型号', model ? model[1] : '—')
-  const ver = t.match(/Version\s+(\S+)/i)
-  add('软件版本', ver ? ver[1] : '—')
-  const tz = t.match(/clock\s+timezone\s+(\S+)(?:\s+(.+))?/i)
-  add('时区', tz ? (tz[1] + (tz[2] ? ' ' + tz[2] : '')) : '—')
-  const domain = t.match(/^\s*dns\s+domain\s+(\S+)/im) || t.match(/^\s*domain\s+name\s+(\S+)/im)
-  add('域名', domain ? domain[1] : '—')
-
-  // ===== 管理服务 =====
-  const ntpServers = []
-  const ntpRe = /ntp-service\s+server\s+(\S+)/gi
-  while ((m = ntpRe.exec(t)) !== null) ntpServers.push(m[1])
-  if (!ntpServers.length) {
-    const ntpRe2 = /^\s*ntp\s+server\s+(\S+)/gim
-    while ((m = ntpRe2.exec(t)) !== null) ntpServers.push(m[1])
-  }
-  add('NTP 服务器', ntpServers.length ? ntpServers.join('、') : '未配置')
-
-  const snmp = /^\s*snmp-agent\b/im.test(t)
-  const snmpComm = []
-  const commRe = /snmp-agent\s+community\s+(?:read|write)\s+(\S+)/gi
-  while ((m = commRe.exec(t)) !== null) snmpComm.push(m[1])
-  add('SNMP', snmp ? '已启用' + (snmpComm.length ? '（团体名 ' + snmpComm.join('、') + '）' : '') : '未配置')
-
-  const ssh = /^\s*ssh\s+server\s+(?:enable|permit)/im.test(t)
-  add('SSH 服务', ssh ? '已启用' : '未启用')
-  const telnet = /^\s*telnet\s+server\s+enable/im.test(t)
-  add('Telnet 服务', telnet ? '已启用' : '未启用')
-
-  const dnsServers = []
-  const dnsRe = /^\s*dns\s+server\s+(\S+)/gim
-  while ((m = dnsRe.exec(t)) !== null) dnsServers.push(m[1])
-  add('DNS 服务器', dnsServers.length ? dnsServers.join('、') : '未配置')
-
-  add('日志中心', /^\s*info-center\s+enable/im.test(t) ? '已启用' : '未配置')
-
-  // ===== 协议 / 资源统计 =====
-  const vlanIds = new Set()
-  const vlanRe = /^vlan\s+(\d+)/gm
-  while ((m = vlanRe.exec(t)) !== null) vlanIds.add(parseInt(m[1], 10))
-  add('VLAN 数量', vlanIds.size ? String(vlanIds.size) : '—')
-  const srCount = (t.match(/^\s*ip\s+route-static\b/gim) || []).length
-  add('静态路由数', srCount ? String(srCount) : '—')
-  const asn = t.match(/^\s*bgp\s+(\d+)/im) || t.match(/^\s*router\s+bgp\s+(\d+)/im)
-  add('BGP AS 号', asn ? asn[1] : '—')
-  const isisProcs = new Set()
-  const isisRe = /^\s*isis\s+(\d+)/gm
-  while ((m = isisRe.exec(t)) !== null) isisProcs.add(m[1])
-  add('ISIS 进程数', isisProcs.size ? String(isisProcs.size) : '—')
-  const locCount = (t.match(/^\s*locator\s+(\S+)/gim) || []).length
-  add('SRv6 Locator', locCount ? String(locCount) : '—')
-  const aclCount = (t.match(/^\s*acl\s+(?:number\s+)?(\d+)/gim) || []).length
-  add('ACL 数量', aclCount ? String(aclCount) : '—')
-
-  return rows
-}
-
 export function parseDeviceProtocolsPure(text, vendor, subtype) {
   const deviceInfo = parseDeviceInfo(text, vendor)
 
@@ -795,12 +724,12 @@ export function parseDeviceProtocolsPure(text, vendor, subtype) {
   const bgpStat = { total: bgp.length, vpnv4: v4, vpnv6: v6, dualStack }
 
   const routing = mergeRoutingStatToTable(parseRoutingStatLog(text))
-  const globalConfig = parseGlobalConfig(text, vendor)
 
   return {
     deviceInfo,
     interfaces: deviceInfo.interfaces,
     ethTrunks: parseEthTrunks(text),
+    vrfInstances: parseVrfInstances(text),
     bgp,
     ospf,
     isis,
@@ -812,7 +741,6 @@ export function parseDeviceProtocolsPure(text, vendor, subtype) {
     ipv6neigh,
     srv6TePolicy,
     routing,
-    globalConfig,
     bgpStat,
     ospfStat
   }

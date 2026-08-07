@@ -2,7 +2,7 @@
 // 运行：npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseBgpSummary, runComparePure, parseDeviceProtocolsPure, parseLiveStatusPure, parseGlobalConfig } from '../src/utils/compareCore.js'
+import { parseBgpSummary, runComparePure, parseDeviceProtocolsPure, parseLiveStatusPure } from '../src/utils/compareCore.js'
 import { useIsisModule } from '../src/utils/isis.js'
 import { useLdpModule } from '../src/utils/ldp.js'
 import { useSrv6SidModule } from '../src/utils/srv6Sid.js'
@@ -210,76 +210,4 @@ test('hashText：相同文本哈希一致、不同长度不同哈希', () => {
   assert.equal(hashText(a), hashText(a))
   assert.notEqual(hashText(a), hashText(a + ' '))
   assert.equal(hashText(''), hashText(''))
-})
-
-test('parseGlobalConfig：华为全局配置解析（系统/服务/统计）', () => {
-  const text = `#
-sysname SW-CORE-01
-#
-clock timezone Beijing add 08:00:00
-dns server 8.8.8.8
-dns domain example.com
-#
-ntp-service enable
-ntp-service server 10.0.0.1
-ntp-service server 10.0.0.2
-#
-snmp-agent
-snmp-agent community read public
-snmp-agent community write private
-#
-ssh server enable
-#
-info-center enable
-#
-interface Vlanif1
- ip address 1.1.1.1 255.255.255.0
-#
-vlan 10
-vlan 20
-vlan 30 to 40
-#
-ip route-static 192.168.0.0 255.255.255.0 10.0.0.254
-bgp 65001
-#
-acl number 2001
-acl 2002
-`
-  const rows = parseGlobalConfig(text, 'huawei')
-  const get = (item) => { const r = rows.find(x => x.item === item); return r ? r.value : null }
-  assert.equal(get('系统名称'), 'SW-CORE-01')
-  assert.equal(get('NTP 服务器'), '10.0.0.1、10.0.0.2')
-  assert.ok(get('SNMP').includes('已启用'))
-  assert.ok(get('SNMP').includes('public'))
-  assert.equal(get('SSH 服务'), '已启用')
-  assert.equal(get('Telnet 服务'), '未启用')
-  assert.equal(get('DNS 服务器'), '8.8.8.8')
-  assert.equal(get('域名'), 'example.com')
-  assert.equal(get('VLAN 数量'), '3')
-  assert.equal(get('静态路由数'), '1')
-  assert.equal(get('BGP AS 号'), '65001')
-  assert.equal(get('ACL 数量'), '2')
-})
-
-test('parseGlobalConfig：华三配置（H3C 型号 / ntp server / telnet）与空配置', () => {
-  const text = `#
-sysname H3C-AGG
-#
-H3C S5560-X-30C-EI
-#
-ntp server 10.1.1.1
-snmp-agent
-snmp-agent sys-info version v2c
-telnet server enable
-`
-  const rows = parseGlobalConfig(text, 'h3c')
-  const get = (item) => { const r = rows.find(x => x.item === item); return r ? r.value : null }
-  assert.equal(get('设备型号'), 'S5560-X-30C-EI')
-  assert.equal(get('NTP 服务器'), '10.1.1.1')
-  assert.equal(get('Telnet 服务'), '已启用')
-  assert.equal(get('SNMP'), '已启用')
-
-  const empty = parseGlobalConfig('', 'huawei')
-  assert.ok(empty.length > 0)
-  assert.equal(empty.find(x => x.item === '系统名称').value, '—')
 })

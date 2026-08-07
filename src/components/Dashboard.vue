@@ -204,7 +204,6 @@ watch(() => route.meta.pageKey, (val) => {
   if (val === 'device-huawei-ar') { activeModule.value = 'interface' }
   if (val === 'device-huawei-trunk') { activeModule.value = 'trunk' }
   if (val === 'device-huawei') { activeModule.value = 'bgp' }
-  if (val === 'device-global') { activeModule.value = 'global' }
 })
 
 // 页面标题（由路由 meta.title 驱动）

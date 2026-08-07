@@ -278,27 +278,6 @@
       </DevicePanel>
     </template>
 
-    <!-- 全局配置（解析） -->
-    <template v-else-if="page === 'device-global'">
-      <DevicePanel
-        title="点击上传或拖拽配置文件到此处"
-        :info="deviceInfoGlobal"
-        :importing="deviceImporting"
-        @upload="onDeviceImport('auto')"
-        @drop="onDeviceDrop($event, 'auto')"
-      >
-        <ProtoPanel
-          ref="globalRef"
-          title="全局配置" desc="系统与服务全局配置项"
-          :list="globalList" :getDiffInfo="noDiff"
-          keyField="item" keyLabel="配置项" :keyWidth="160"
-          stateField="item" :resultWidth="120"
-          :columns="[{ key: 'value', label: '配置值', minWidth: 280 }]"
-          deviceMode moduleName="global" v-model:activeModule="localActive" :filterFocus="filterFocusModule" :export-name="importedFileName" @focusFilter="onFocus"
-        />
-      </DevicePanel>
-    </template>
-
     <!-- 连接设备采集弹窗（配置解析页 SSH 直采） -->
     <el-dialog v-model="collectDialog" title="连接设备采集" width="440px" append-to-body>
       <div class="dc-body">
@@ -376,6 +355,9 @@ const { neighborList: routingList, getDiffInfo: routingGetDiff, updateNeighbors:
 // 聚合口(解析)：共享数据（trunkScope 全局单例，跨三个解析页共享一份配置的解析结果）
 const trunkList = trunkScope.list
 
+// VRF 解析列表
+const vrfList = ref([])
+
 const deviceImporting = ref(false)
 const lastVendor = ref('')
 const lastSubtype = ref(undefined)
@@ -390,12 +372,6 @@ const bgpStat = ref(null)
 const ospfStat = ref(null)
 const deviceInfoAR = ref(null)
 const deviceInfoH3C = ref(null)
-const deviceInfoGlobal = ref(null)
-
-const lastGlobalConfig = ref([])
-
-// 全局配置列表（三个子页共用，从各自解析结果中取）
-const globalList = computed(() => lastGlobalConfig.value)
 
 // 各解析面板 ref（供「一键导出全部」收集工作表）
 const bgpRef = ref(null)
@@ -411,7 +387,6 @@ const ipv6neighRef = ref(null)
 const ifaceRef = ref(null)
 const routingRef = ref(null)
 const interfaceInfoRef = ref(null)
-const globalRef = ref(null)
 
 const localActive = computed({
   get: () => props.activeModule,
@@ -423,7 +398,6 @@ const onFocus = (name) => {
 }
 
 const setDeviceInfo = (result, vendor, subtype) => {
-  if (props.page === 'device-global') { deviceInfoGlobal.value = result; return }
   // 全量设置：一份配置的 deviceInfo 同时喂给 华为协议/华为AR/华三/聚合口 四个面板的 info
   // （DevicePanel 的 slot 仅在 info 有值时渲染，漏设会导致对应解析页只显示上传区、表格不渲染）
   deviceInfoHW.value = result
@@ -436,12 +410,7 @@ const applyDeviceText = async (text, vendor, subtype) => {
   lastVendor.value = vendor
   lastSubtype.value = subtype
   const result = await runDeviceParseInWorker(text, vendor, subtype)
-  lastGlobalConfig.value = result.globalConfig || []
   setDeviceInfo(result.deviceInfo, vendor, subtype)
-  if (props.page === 'device-global') {
-    emit('update:activeModule', 'global')
-    return
-  }
   // 全量写入：一份配置同时解析出 协议 + 接口 + 聚合口 + 路由，
   // 三个解析页（路由协议/接口信息/聚合口）共享同一份数据，切页即见结果
   if (vendor === 'huawei') {
@@ -461,6 +430,7 @@ const applyDeviceText = async (text, vendor, subtype) => {
   updateNeighbors(result.interfaces)
   updateRouting(result.routing)
   trunkList.value = result.ethTrunks || []
+  vrfList.value = result.vrfInstances || []
   // 激活当前页面对应模块
   if (subtype === 'trunk') emit('update:activeModule', 'trunk')
   else if (vendor === 'huawei' && !subtype) emit('update:activeModule', 'bgp')
@@ -600,6 +570,7 @@ const hwColumns = [
 const deviceNameCol = [{ key: 'deviceName', label: '设备名', minWidth: 200 }]
 
 const arColumns = [
+  { key: 'interfaceName', label: '接口', minWidth: 140 },
   { key: 'ethTrunk', label: '聚合口', minWidth: 110 },
   { key: 'portStatus', label: '物理状态', minWidth: 80 },
   { key: 'protoStatus', label: '协议状态', minWidth: 80 },
@@ -621,14 +592,24 @@ const arColumns = [
   { key: 'crc', label: 'CRC统计', minWidth: 60 }
 ]
 
-// 聚合口(解析)列定义（从左到右：设备名(前导)/聚合口(主键)/聚合口状态/聚合口成员信息/物理口状态/聚合口描述/IPv4地址/IPv6地址）
+// 聚合口(解析)列定义（从左到右：设备名(前导)/聚合口状态/聚合口/VRF/IPv4地址/IPv6地址/聚合口成员信息/物理口状态/聚合口描述）
 const trunkColumns = [
   { key: 'trunkStatus', label: '聚合口状态', minWidth: 100 },
+  { key: 'interfaceName', label: '聚合口', minWidth: 110 },
+  { key: 'vrf', label: 'VRF', minWidth: 100 },
+  { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
+  { key: 'ipv6', label: 'IPv6地址', minWidth: 190 },
   { key: 'members', label: '聚合口成员信息', minWidth: 260 },
   { key: 'portStatus', label: '物理口状态', minWidth: 120 },
-  { key: 'description', label: '聚合口描述', minWidth: 220 },
-  { key: 'ipv4', label: 'IPv4地址', minWidth: 115 },
-  { key: 'ipv6', label: 'IPv6地址', minWidth: 190 }
+  { key: 'description', label: '聚合口描述', minWidth: 220 }
+]
+
+// VRF(解析)列定义（从左到右：VRF名称/RD/Export RT/Import RT/关联接口）
+const vrfColumns = [
+  { key: 'rd', label: 'RD', minWidth: 180 },
+  { key: 'exportTargets', label: 'Export RT', minWidth: 180 },
+  { key: 'importTargets', label: 'Import RT', minWidth: 180 },
+  { key: 'interfaces', label: '关联接口', minWidth: 300 }
 ]
 
 // IPV4 路由表（配置解析·设备状态页，仅解析展示，不参与对比）
@@ -736,9 +717,6 @@ const PARSE_MODULE_DEFS = {
     { key: 'vlan', label: 'VLAN/CEVLAN', minWidth: 110 },
     { key: 'isRouter', label: '是否路由器', minWidth: 90 },
     { key: 'secureFlag', label: '安全标志', minWidth: 90 }
-  ] },
-  globalConfig: { title: '全局配置', keyField: 'item', keyLabel: '配置项', boolFields: [], columns: [
-    { key: 'value', label: '配置值', minWidth: 280 }
   ] }
 }
 
@@ -758,8 +736,8 @@ const parseModulesForExport = computed(() => {
     { def: PARSE_MODULE_DEFS.ipv6neigh, list: ipv6neighList, getDiffInfo: ipv6neighGetDiff },
     { def: { title: '接口信息', keyField: 'interfaceName', keyLabel: '接口', boolFields: [], columns: [...deviceNameCol, ...arColumns] }, list: ifaceList, getDiffInfo: ifaceGetDiff },
     { def: { title: '聚合口', keyField: 'interfaceName', keyLabel: '聚合口', boolFields: [], columns: [...deviceNameCol, ...trunkColumns] }, list: trunkList, getDiffInfo: noDiff },
-    { def: { title: 'IPV4路由表', keyField: 'proto', keyLabel: '协议类别', boolFields: [], columns: routingCols }, list: routingList, getDiffInfo: routingGetDiff },
-    { def: PARSE_MODULE_DEFS.globalConfig, list: globalList, getDiffInfo: noDiff }
+    { def: { title: 'VRF', keyField: 'vrfName', keyLabel: 'VRF名称', boolFields: [], columns: vrfColumns }, list: vrfList, getDiffInfo: noDiff },
+    { def: { title: 'IPV4路由表', keyField: 'proto', keyLabel: '协议类别', boolFields: [], columns: routingCols }, list: routingList, getDiffInfo: routingGetDiff }
   ]
   return list.map(m => ({
     title: m.def.title,
